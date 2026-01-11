@@ -18,6 +18,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "overcooked-ai" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "torch" },
     { name = "wandb" },
 ]
@@ -41,6 +42,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.15.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "torch", specifier = ">=2.9.1" },
     { name = "wandb", specifier = ">=0.23.1" },
 ]

@@ -41,7 +41,7 @@ class Config(BaseModel):
     seed: int = Field(default=42, description="Random seed for reproducibility")
     exp_name: str = Field(..., description="Name of the experiment")
     env_config: EnvironmentConfig = Field(..., description="Environment config")
-    training: TrainingConfig = Field(..., description="Training config")
+    training_config: TrainingConfig = Field(..., description="Training config")
 
     @classmethod
     def from_files(

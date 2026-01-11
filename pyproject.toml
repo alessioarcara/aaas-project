@@ -17,6 +17,7 @@ dependencies = [
     "matplotlib>=3.10.8",
     "overcooked-ai>=2.0.0",
     "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
     "torch>=2.9.1",
     "wandb>=0.23.1",
 ]
@@ -46,3 +47,6 @@ overcooked-ai = { git = "https://github.com/HumanCompatibleAI/overcooked_ai.git"
 
 [tool.flit.module]
 name = "src"
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore:.*pkg_resources is deprecated.*:UserWarning"]
