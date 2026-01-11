@@ -1,6 +1,9 @@
 from typing import Literal, TypeAlias
 
 import numpy as np
+from pathlib import Path
+
+PathOrStr: TypeAlias = Path | str
 
 LayoutName: TypeAlias = Literal[
     "cramped_room",

@@ -2,17 +2,15 @@ from typing import Final
 
 import numpy as np
 import pytest
-from gymnasium.vector.async_vector_env import AsyncVectorEnv
 
-from src.utils import make_env
+from src.env_factory import create_vector_env
 
 NUM_ENVS: Final[int] = 4
 
 
 @pytest.fixture
 def vector_env():
-    env_fns = [make_env(["cramped_room"]) for _ in range(NUM_ENVS)]
-    envs = AsyncVectorEnv(env_fns)
+    envs = create_vector_env(num_envs=NUM_ENVS)
     yield envs
     envs.close()
 

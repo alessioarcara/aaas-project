@@ -1,0 +1,10 @@
+video_dir: "videos"
+video_interval: 10
+num_episodes: 20
+num_environments: 2
+layouts: 
+  - cramped_room
+learning_rate: 1e-5
+device: "cuda"
+gamma: 0.99
+lam: 0.95

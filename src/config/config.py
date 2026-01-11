@@ -1,63 +1,49 @@
-from typing import Any, Dict, Generic, Type, TypeVar
+from gymnasium.vector import VectorEnv
+from pydantic import BaseModel, Field
+from pydantic.types import PositiveInt
 
-T = TypeVar("T")
-
-
-class Registry(Generic[T]):
-    def __init__(self) -> None:
-        self._registry: Dict[str, Type[T]] = {}
-
-    def register(self, name: str, cls: Type[T]) -> None:
-        if name in self._registry:
-            raise KeyError(f"{name} already registered")
-        self._registry[name] = cls
-
-    def get(self, name: str) -> Type[T] | None:
-        return self._registry.get(name)
+from src.env_factory import create_vector_env
+from src.utils.typings import LayoutName
 
 
-def build_from_config(value: dict | list[dict] | Any, *registries: Registry):
-    """
-    Instantiates objects from configuration searching for 'type' in the provided registries.
-    """
-    # List -> recursive call for each item
-    if isinstance(value, list):
-        return [build_from_config(v, *registries) for v in value]
+class TrainingConfig(BaseModel):
+    num_steps: PositiveInt = Field(
+        ...,
+        description="Number of steps collected in the fixed-length trajectory segments",
+    )
+    wandb_project_name: str = Field(..., description="W&B project name for logging")
+    wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
 
-    # Dict -> can be a class to instantiate or a simple parameter dict
-    if isinstance(value, dict):
-        if "type" in value:
-            cls_name = value["type"]
-            params = value.get("params", {})
 
-            # Resolve parameters recursively BEFORE passing to the constructor
-            # This ensures nested objects are built first
-            resolved_params = {
-                k: build_from_config(v, *registries) for k, v in params.items()
-            }
+class EnvironmentConfig(BaseModel):
+    num_envs: PositiveInt = Field(..., description="Number of parallel environments")
+    layouts: list[LayoutName] = Field(
+        default=["cramped_room"],
+        min_length=1,
+        description="List of Overcooked layouts to use for training (must contain at least one).",
+    )
+    info_level: int = Field(
+        1, description="Information level for the environment logging/observation."
+    )
+    horizon: PositiveInt = Field(
+        400, description="Time horizon (max steps) for each episode."
+    )
 
-            # Find the class in the provided registries
-            cls_to_init = None
-            for reg in registries:
-                cls_to_init = reg.get(cls_name)
-                if cls_to_init is not None:
-                    break
 
-            if cls_to_init is None:
-                raise KeyError(
-                    f"Class {cls_name} not found in any of the provided registries"
-                )
+class Config(BaseModel):
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+    exp_name: str = Field(..., description="Name of the experiment")
+    env_config: EnvironmentConfig = Field(
+        ..., description="Environment configuration parameters."
+    )
+    training: TrainingConfig = Field(
+        ..., description="Training algorithm configuration parameters."
+    )
 
-            try:
-                # Instantiate the class with resolved parameters
-                return cls_to_init(**resolved_params)
-            except Exception as e:
-                raise ValueError(
-                    f"Failed to instantiate {cls_name} with params {params}: {e}"
-                )
-
-        # if doesn't have 'type', it is a standard dict -> recursive call for each value
-        return {k: build_from_config(val, *registries) for k, val in value.items()}
-
-    # Primitives (int, float, str, etc.) -> return value as is
-    return value
+    def envs(self) -> VectorEnv:
+        return create_vector_env(
+            num_envs=self.env_config.num_envs,
+            layouts=self.env_config.layouts,
+            info_level=self.env_config.info_level,
+            horizon=self.env_config.horizon,
+        )

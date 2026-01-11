@@ -9,7 +9,7 @@ from overcooked_ai_py.mdp.overcooked_env import (
 )
 from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
 
-from src.typings import LayoutName, OvercookedAction, OvercookedObs
+from src.utils.typings import LayoutName, OvercookedAction, OvercookedObs
 
 
 class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
