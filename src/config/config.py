@@ -1,8 +1,15 @@
+import sys
+from pathlib import Path
+from typing import Any, Optional, Self
+
 from gymnasium.vector import VectorEnv
-from pydantic import BaseModel, Field
+from loguru import logger
+from pydantic import BaseModel, Field, ValidationError
 from pydantic.types import PositiveInt
 
+from src.config.utils import _deep_merge
 from src.env_factory import create_vector_env
+from src.utils.io import read_yaml
 from src.utils.typings import LayoutName
 
 
@@ -33,12 +40,53 @@ class EnvironmentConfig(BaseModel):
 class Config(BaseModel):
     seed: int = Field(default=42, description="Random seed for reproducibility")
     exp_name: str = Field(..., description="Name of the experiment")
-    env_config: EnvironmentConfig = Field(
-        ..., description="Environment configuration parameters."
-    )
-    training: TrainingConfig = Field(
-        ..., description="Training algorithm configuration parameters."
-    )
+    env_config: EnvironmentConfig = Field(..., description="Environment config")
+    training: TrainingConfig = Field(..., description="Training config")
+
+    @classmethod
+    def from_files(
+        cls: Self,
+        config_paths: list[str | Path],
+        overrides: Optional[dict[str, Any]] = None,
+    ) -> "Config":
+        """
+        Factory method to create a Config instance from multiple YAML files and optional overrides.
+
+        Args:
+            config_paths: List of file paths (strings or Path objects) to YAML configuration files.
+            overrides: An optional dictionary containing configuration overrides.
+        Returns:
+            An instance of Config with the merged and validated configuration.
+        """
+        if not config_paths:
+            logger.error("❌ No configuration paths provided.")
+            sys.exit(1)
+
+        merged_config: dict[str, Any] = {}
+        paths = [Path(p) for p in config_paths]
+
+        # Loading and merging files
+        logger.info(f"📄 Building config from {len(paths)} files:")
+        for path in paths:
+            logger.info(f"    -> Loading: {path.name}")
+            try:
+                config_data = read_yaml(path)
+                merged_config = _deep_merge(merged_config, config_data)
+            except Exception as e:
+                logger.error(f"❌ Error reading {path}: {e}")
+                sys.exit(1)
+
+        # Merge overrides if provided
+        if overrides:
+            merged_config = _deep_merge(merged_config, overrides)
+
+        # Validation and instantiation
+        try:
+            instance = cls.model_validate(merged_config)
+            return instance
+        except ValidationError as e:
+            logger.error(f"❌ Configuration validation failed:\n{e}")
+            sys.exit(1)
 
     def envs(self) -> VectorEnv:
         return create_vector_env(
