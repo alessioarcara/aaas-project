@@ -12,7 +12,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "flax>=0.10.6",
     "gymnasium[other]>=1.2.3",
+    "jax[cuda12]>=0.5.3",
     "loguru>=0.7.3",
     "matplotlib>=3.10.8",
     "overcooked-ai>=2.0.0",
@@ -28,6 +30,7 @@ dev = [
     "pytest>=9.0.2",
     "mypy>=1.5.1",
     "pytest-mock>=3.15.1",
+    "pytest-cov>=7.0.0",
 ]
 
 [tool.mypy]
