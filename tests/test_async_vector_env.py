@@ -1,38 +1,21 @@
-from typing import Final
-
 import numpy as np
 import pytest
 
-from src.env_factory import create_vector_env
-
-NUM_ENVS: Final[int] = 4
-
-
-@pytest.fixture
-def vector_env():
-    envs = create_vector_env(num_envs=NUM_ENVS)
-    yield envs
-    envs.close()
-
-
-def fake_policy(obs):
-    batch_size = obs["agent_0_obs"].shape[0]
-    actions = [(0, 0)] * batch_size  # stay
-    return actions
+from tests.constants import NUM_ENVS
 
 
 def test_async_vector_env(vector_env):
     obs, info = vector_env.reset()
 
-    assert obs["agent_0_obs"].shape[0] == NUM_ENVS
-    assert obs["agent_1_obs"].shape[0] == NUM_ENVS
+    assert obs.shape[0] == NUM_ENVS
+    assert obs.shape[0] == NUM_ENVS
 
-    actions = fake_policy(obs)
+    obs, rewards, terminated, truncated, info = vector_env.step(
+        np.zeros((NUM_ENVS, 2), dtype=np.int32)
+    )
 
-    obs, rewards, terminated, truncated, info = vector_env.step(actions)
-
-    assert obs["agent_0_obs"].shape[0] == NUM_ENVS
-    assert obs["agent_1_obs"].shape[0] == NUM_ENVS
+    assert obs.shape[0] == NUM_ENVS
+    assert obs.shape[0] == NUM_ENVS
     assert rewards.shape[0] == NUM_ENVS
     assert terminated.shape[0] == NUM_ENVS
     assert truncated.shape[0] == NUM_ENVS
@@ -48,17 +31,15 @@ def test_async_vector_env(vector_env):
         ),  # 10 steps into new episode due to auto-reset -> no envs done
     ],
 )
-def test_full_episode(vector_env, steps, expect_done):
+def test_full_episode(vector_env, fake_policy, steps, expect_done):
     next_obs, info = vector_env.reset()
 
     max_steps = steps
 
     for _ in range(max_steps):
-        obs = next_obs
-
-        action = fake_policy(obs)
-
-        next_obs, rewards, terminated, truncated, info = vector_env.step(action)
+        next_obs, rewards, terminated, truncated, info = vector_env.step(
+            np.zeros((NUM_ENVS, 2), dtype=np.int32)
+        )
 
         has_terminated_or_truncated = np.logical_or(terminated, truncated)
 

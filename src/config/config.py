@@ -18,8 +18,11 @@ class TrainingConfig(BaseModel):
         ...,
         description="Number of steps collected in the fixed-length trajectory segments",
     )
-    wandb_project_name: str = Field(..., description="W&B project name for logging")
-    wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
+    gae_lambda: float = Field(
+        0.95,
+        description="Controls the bias-variance trade-off for advantage estimation",
+    )
+    gae_gamma: float = Field(0.99, description="Discount factor for future rewards")
 
 
 class EnvironmentConfig(BaseModel):
@@ -40,6 +43,8 @@ class EnvironmentConfig(BaseModel):
 class Config(BaseModel):
     seed: int = Field(default=42, description="Random seed for reproducibility")
     exp_name: str = Field(..., description="Name of the experiment")
+    wandb_project_name: str = Field(..., description="W&B project name for logging")
+    wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
     env_config: EnvironmentConfig = Field(..., description="Environment config")
     training_config: TrainingConfig = Field(..., description="Training config")
 
@@ -88,6 +93,7 @@ class Config(BaseModel):
             logger.error(f"❌ Configuration validation failed:\n{e}")
             sys.exit(1)
 
+    @property
     def envs(self) -> VectorEnv:
         return create_vector_env(
             num_envs=self.env_config.num_envs,
