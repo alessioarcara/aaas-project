@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from src.train import Carry, collect_rollouts
+from src.rollout import Carry, TrajectorySegment, collect_rollouts, compute_gae
 from tests.constants import NUM_ENVS
 
 
@@ -49,6 +49,7 @@ def test_collect_rollout(mock_rollout):
     OBS_DIM = 3
     NUM_STEPS = 4
 
+    # Format: (obs, reward, terminated, truncated)
     env_outcomes = [
         (1.0, 1.0, False, False),  # Step 1: Normal step
         (99.0, 1.0, False, True),  # Step 2: RESET!
@@ -56,7 +57,7 @@ def test_collect_rollout(mock_rollout):
         (3.0, 1.0, False, False),  # Step 4: Normal step
     ]
 
-    agent_values = [10.0, 20.0, 30.0, 40.0]
+    agent_values = [10.0, 20.0, 30.0, 40.0, 50.0]
 
     envs, agent = mock_rollout(env_outcomes, agent_values, obs_dim=3)
 
@@ -91,3 +92,69 @@ def test_collect_rollout(mock_rollout):
     # t4 as last obs
     assert np.all(carry.obs == 3.0)
     assert not np.any(carry.done)
+
+
+def test_compute_gae():
+    agent_values = jnp.array([10.0, 20.0, 30.0, 40.0])
+
+    segment = TrajectorySegment(
+        obs=jnp.zeros((4, NUM_ENVS, 3)),  # Dummy obs
+        rewards=jnp.full((4, NUM_ENVS), 1.0),  # Rewards = 1.0 at each step
+        dones=jnp.array(
+            [
+                [False] * NUM_ENVS,
+                [True] * NUM_ENVS,  # Reset after step 1
+                [False] * NUM_ENVS,
+                [False] * NUM_ENVS,
+            ]
+        ),
+        values=jnp.tile(agent_values[:, None], (1, NUM_ENVS)),
+        last_value=jnp.zeros(NUM_ENVS),  # Dummy last value
+        last_done=jnp.zeros(NUM_ENVS, dtype=bool),  # Dummy last done
+    )
+
+    # Formulas:
+    # A_t = delta_t + gamma * lambda * A_t+1
+    # where delta_t = r_t + gamma * V(s_t+1) - V(s_t)
+    #
+    # Step 3:
+    # R3 = 1.0
+    # V3 = 40.0
+    # V4 = 0.0
+    # delta3 = 1.0 + 0.9 * 0.0 - 40.0 = -39.0
+    # A3 = delta3 = -39.0
+    #
+    # Step 2:
+    # R2 = 1.0
+    # V2 = 30.0
+    # V3 = 40.0
+    # delta2 = 1.0 + 0.9 * 40.0 - 30.0 = 10.6 = 7.0
+    # A2 = 7.0 + + 0.9 * 0.95 * -39.0 = -26.345
+    #
+    # Step 1 (RESET):
+    # R1 = 1.0
+    # V1 = 20.0
+    # V2 = 0.0
+    # delta1 = 1.0 + 0.9 * 0.0 - 20.0 = -19.0
+    # A2 = -19.0
+    #
+    # Step 0:
+    # R0 = 1.0
+    # V0 = 10.0
+    # V1 = 20.0
+    # delta0 = 1.0 + 0.9 * 20.0 - 10.0 = 9.0
+    # A0 = 9.0 + 0.9 * 0.95 * -19.0 = -7.245
+    expected_advantages = np.tile([-7.245, -19.0, -26.345, -39.0], (NUM_ENVS, 1)).T
+
+    # Returns = Advantages + Values
+    expected_returns = expected_advantages + np.array(agent_values)[:, None]
+
+    advantages, returns = compute_gae(segment, 0.9, 0.95)
+
+    np.testing.assert_allclose(
+        advantages, expected_advantages, atol=1e-5, err_msg="Wrong advantages computed"
+    )
+
+    np.testing.assert_allclose(
+        returns, expected_returns, atol=1e-5, err_msg="Wrong returns computed"
+    )
