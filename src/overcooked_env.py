@@ -46,21 +46,18 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         self._cur = self._envs[0]
         dummy_raw = self._cur.reset()
 
-        obs_agent_0 = np.array(dummy_raw["both_agent_obs"][0])
-        obs_agent_1 = np.array(dummy_raw["both_agent_obs"][1])
-
         # TODO:: with more layouts we cannot take shape from first obs
         # since in the reset we randomly pick a new layout and obs shape may differ
         # we will take the max shape
-        self.observation_space = spaces.Dict(
-            {
-                "agent_0_obs": spaces.Box(
-                    low=-np.inf, high=np.inf, shape=obs_agent_0.shape, dtype=np.float32
-                ),
-                "agent_1_obs": spaces.Box(
-                    low=-np.inf, high=np.inf, shape=obs_agent_1.shape, dtype=np.float32
-                ),
-            }
+        dummy_obs_stack = np.stack(dummy_raw["both_agent_obs"])
+
+        self.n_agents = dummy_obs_stack.shape[0]
+
+        self.observation_space = spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=dummy_obs_stack.shape,
+            dtype=np.float32,
         )
 
         self.action_space = self._envs[0].action_space
@@ -73,14 +70,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         """
         Process the raw observation from the Overcooked environment into the desired format.
         """
-        obs_agent_0 = np.array(raw_obs["both_agent_obs"][0])
-        obs_agent_1 = np.array(raw_obs["both_agent_obs"][1])
-
-        obs_dict = {
-            "agent_0_obs": obs_agent_0,
-            "agent_1_obs": obs_agent_1,
-        }
-        return obs_dict
+        return np.stack(raw_obs["both_agent_obs"]).astype(np.float32)
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
@@ -98,15 +88,14 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         self._cur = self._envs[idx]
 
         raw_obs = self._cur.reset()
-
         obs = self._process_obs(raw_obs)
-        info: Dict[str, Any] = {"layout_name": self.layouts[idx]}
 
+        info = {"layout_name": self.layouts[idx]}
         return obs, info
 
     def step(
         self, action: OvercookedAction
-    ) -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any]]:
+    ) -> Tuple[OvercookedObs, np.ndarray, bool, bool, Dict[str, Any]]:
         """
         Execute one step within the environment.
 
@@ -119,15 +108,17 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         raw_obs, reward, done, info = self._cur.step(action)
         obs = self._process_obs(raw_obs)
 
-        terminated = False
-        truncated = done
+        rewards = np.array([reward] * self.n_agents, dtype=np.float32)
 
-        return obs, float(reward), terminated, truncated, info
+        terminated = False
+        truncated = bool(done)
+
+        return obs, rewards, terminated, truncated, info
 
     def render(self) -> Optional[np.ndarray]:
         """
         Returns:
-            A NumPy arrayof shape (height, width, 3) representing the RGB image of the current state.
+            A NumPy array of shape (height, width, 3) representing the RGB image of the current state.
         """
         if self.render_mode == "rgb_array":
             return self._cur.render(model="rgb_array")

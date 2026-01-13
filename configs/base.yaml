@@ -1,0 +1,14 @@
+seed: 42
+exp_name: "my_experiment"
+wandb_project_name: "aaas_project"
+wandb_entity: "aarcara"
+env_config:
+  num_envs: 4
+  layouts:
+    - "cramped_room"
+  info_level: 1
+  horizon: 400
+training_config:
+  num_steps: 200
+  gae_lambda: 0.95
+  gae_gamma: 0.99
