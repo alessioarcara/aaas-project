@@ -1,7 +1,10 @@
 import argparse
+import os
 
 from src.config import Config
 from src.train import train
+
+os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 
 def main(config_paths: list[str]) -> None:

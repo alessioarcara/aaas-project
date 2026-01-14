@@ -61,6 +61,11 @@ def collect_rollouts(
 
         action = np.array(action_jnp)
         next_obs, reward, terminated, truncated, _ = envs.step(action)
+
+        # HACK: if reward is (n_envs,), make it (n_envs, n_agents)
+        if reward.ndim == 1:
+            reward = np.repeat(reward[:, np.newaxis], n_agents, axis=1)
+
         done = np.logical_or(terminated, truncated)
 
         # (n_envs) -> (n_envs, n_agents)

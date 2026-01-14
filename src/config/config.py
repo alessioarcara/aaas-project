@@ -4,7 +4,7 @@ from typing import Any, Optional, Self
 
 from gymnasium.vector import VectorEnv
 from loguru import logger
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, DirectoryPath, Field, ValidationError
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
@@ -47,6 +47,12 @@ class Config(BaseModel):
     wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
     env_config: EnvironmentConfig = Field(..., description="Environment config")
     training_config: TrainingConfig = Field(..., description="Training config")
+    video_dir: DirectoryPath = Field(
+        default=Path("./videos"), description="Directory to save training videos"
+    )
+    video_interval: PositiveInt = Field(
+        default=1000, description="Each n steps to record a video"
+    )
 
     @classmethod
     def from_files(
@@ -100,4 +106,6 @@ class Config(BaseModel):
             layouts=self.env_config.layouts,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
+            video_dir=self.video_dir,
+            video_interval=self.video_interval,
         )

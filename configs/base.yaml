@@ -2,13 +2,15 @@ seed: 42
 exp_name: "my_experiment"
 wandb_project_name: "aaas_project"
 wandb_entity: "aarcara"
+video_dir: "./videos"
+video_interval: 1000
 env_config:
-  num_envs: 4
+  num_envs: 8
   layouts:
     - "cramped_room"
   info_level: 1
   horizon: 400
 training_config:
-  num_steps: 200
+  num_steps: 1000
   gae_lambda: 0.95
   gae_gamma: 0.99

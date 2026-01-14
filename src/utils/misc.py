@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Optional
 
 
-def latest_video_path(directory: Path):
+def latest_video_path(directory: Path) -> Optional[Path]:
     mp4s = list(directory.glob("*.mp4"))
     return max(mp4s, key=lambda p: p.stat().st_mtime) if mp4s else None
