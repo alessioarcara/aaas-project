@@ -14,6 +14,9 @@ from src.utils.typings import LayoutName
 
 
 class TrainingConfig(BaseModel):
+    total_updates: PositiveInt = Field(
+        ..., description="Total number of training updates"
+    )
     num_steps: PositiveInt = Field(
         ...,
         description="Number of steps collected in the fixed-length trajectory segments",

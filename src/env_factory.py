@@ -16,9 +16,11 @@ def create_vector_env(
     horizon: int,
     video_dir: Path,
     video_interval: int,
+    should_record_video: bool = True,
 ) -> VectorEnv:
     def make_env(idx: int):
         def _thunk():
+            # only first env renders to rgb_array for video recording
             render_mode = "rgb_array" if idx == 0 else None
             env = OvercookedGym(
                 layouts=layouts,
@@ -27,7 +29,7 @@ def create_vector_env(
                 render_mode=render_mode,
             )
 
-            if idx == 0:
+            if should_record_video and idx == 0:
                 env = gym.wrappers.RecordVideo(
                     env,
                     video_folder=str(video_dir),
@@ -38,5 +40,5 @@ def create_vector_env(
         return _thunk
 
     envs = AsyncVectorEnv([make_env(i) for i in range(num_envs)])
-    envs = gym.wrappers.vector.RecordEpisodeStatistics(envs)
+    # envs = gym.wrappers.vector.RecordEpisodeStatistics(envs)
     return envs

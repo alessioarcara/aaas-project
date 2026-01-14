@@ -11,6 +11,7 @@ env_config:
   info_level: 1
   horizon: 400
 training_config:
-  num_steps: 1000
+  num_steps: 128 
+  total_updates: 10000
   gae_lambda: 0.95
   gae_gamma: 0.99

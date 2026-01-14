@@ -7,9 +7,7 @@ BASE_CONFIG = {
     "exp_name": "test_exp",
     "wandb_project_name": "test_proj",
     "wandb_entity": "test_entity",
-    "env_config": {
-        "num_envs": 4,
-    },
+    "env_config": {"num_envs": 4, "horizon": 400},
     "training_config": {
         "num_steps": 100,
     },

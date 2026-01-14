@@ -21,6 +21,7 @@ class TrajectorySegment:
 class Carry:
     obs: jax.Array  # (N, A, obs_dim)
     done: jax.Array  # (N, A)
+    key: jax.Array  # RNG key
 
 
 def collect_rollouts(
@@ -41,6 +42,7 @@ def collect_rollouts(
     """
     next_obs = np.array(carry.obs)
     next_done = np.array(carry.done)
+    key = carry.key
 
     n_envs = next_obs.shape[0]
     n_agents = next_obs.shape[1]
@@ -54,12 +56,14 @@ def collect_rollouts(
     for step in range(num_steps):
         obs[step] = next_obs
 
+        key, subkey = jax.random.split(key)
+
         obs_jnp = jax.device_put(next_obs)
-        action_jnp, value_jnp = agent.get_action_and_value(obs_jnp)
+        agent_out = agent.get_action_and_value(obs_jnp, key)
 
-        values[step] = np.array(value_jnp)
+        values[step] = np.array(agent_out.value)
+        action = np.array(agent_out.action)
 
-        action = np.array(action_jnp)
         next_obs, reward, terminated, truncated, _ = envs.step(action)
 
         # HACK: if reward is (n_envs,), make it (n_envs, n_agents)
@@ -68,16 +72,15 @@ def collect_rollouts(
 
         done = np.logical_or(terminated, truncated)
 
-        # (n_envs) -> (n_envs, n_agents)
+        # HACK: (n_envs) -> (n_envs, n_agents)
         done_broadcast = np.repeat(done[:, np.newaxis], n_agents, axis=1)
 
         rewards[step] = reward
         dones[step] = done_broadcast
-
         next_done = done_broadcast
 
     last_obs_jnp = jax.device_put(next_obs)
-    _, last_value_jnp = agent.get_action_and_value(last_obs_jnp)
+    last_value_jnp = agent.get_value(last_obs_jnp)
 
     segment = TrajectorySegment(
         obs=jnp.array(obs),
@@ -91,6 +94,7 @@ def collect_rollouts(
     carry = Carry(
         obs=jnp.array(next_obs),
         done=jnp.array(next_done),
+        key=key,
     )
 
     return segment, carry
