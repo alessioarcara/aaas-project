@@ -3,7 +3,9 @@ import numpy as np
 import pytest
 
 from src.rollout import Carry, TrajectorySegment, collect_rollouts, compute_gae
+from src.agent import AgentOutput
 from tests.constants import NUM_ENVS
+import jax
 
 
 @pytest.fixture
@@ -33,9 +35,11 @@ def mock_rollout(mocker):
 
         def agent_act(obs, key=None):
             val = next(agent_iter)
-            return (
-                jnp.zeros((NUM_ENVS, num_agents), dtype=jnp.int32),
-                jnp.full((NUM_ENVS, num_agents), val, dtype=jnp.float32),
+            return AgentOutput(
+                action=jnp.zeros((NUM_ENVS, num_agents), dtype=jnp.int32),
+                action_log_prob=jnp.zeros((NUM_ENVS, num_agents), dtype=jnp.float32),
+                entropy=jnp.zeros((NUM_ENVS, num_agents), dtype=jnp.float32),
+                value=jnp.full((NUM_ENVS, num_agents), val, dtype=jnp.float32),
             )
 
         agent.get_action_and_value.side_effect = agent_act
@@ -68,14 +72,13 @@ def test_collect_rollout(mock_rollout):
     init_obs = np.zeros((NUM_ENVS, NUM_AGENTS, OBS_DIM), dtype=np.float32)
     init_done = np.zeros((NUM_ENVS, NUM_AGENTS), dtype=bool)
 
+    key = jax.random.key(0)
+
     segment, carry = collect_rollouts(
         envs,
         agent,
         NUM_STEPS,
-        Carry(
-            obs=init_obs,
-            done=init_done,
-        ),
+        Carry(obs=init_obs, done=init_done, key=key),
     )
 
     # assert shapes
