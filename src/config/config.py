@@ -4,16 +4,17 @@ from typing import Any, Optional, Self
 
 from gymnasium.vector import VectorEnv
 from loguru import logger
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, DirectoryPath, Field, ValidationError
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
-from src.env_factory import create_vector_env
+from src.env_factory import create_eval_env, create_vector_env
 from src.utils.io import read_yaml
 from src.utils.typings import LayoutName
 
 
 class TrainingConfig(BaseModel):
+    total_updates: PositiveInt = Field(..., description="Total number of training updates")
     num_steps: PositiveInt = Field(
         ...,
         description="Number of steps collected in the fixed-length trajectory segments",
@@ -23,6 +24,15 @@ class TrainingConfig(BaseModel):
         description="Controls the bias-variance trade-off for advantage estimation",
     )
     gae_gamma: float = Field(0.99, description="Discount factor for future rewards")
+    epsilon: float = Field(0.2, description="Clipping parameter for PPO")
+    minibatch_size: PositiveInt = Field(...)
+    update_epochs: PositiveInt = Field(
+        ..., description="The number of times to iterate through the entire collected rollout segment for update."
+    )
+    learning_rate: float = Field(...)
+    adam_epsilon: float = Field(1e-5, description="Epsilon parameter for the Adam optimizer")
+    value_coef: float = Field(0.5, description="Coefficient for the value loss term")
+    entropy_coef: float = Field(0.01, description="Coefficient for the policy entropy term")
 
 
 class EnvironmentConfig(BaseModel):
@@ -32,12 +42,8 @@ class EnvironmentConfig(BaseModel):
         min_length=1,
         description="List of Overcooked layouts to use for training (must contain at least one).",
     )
-    info_level: int = Field(
-        1, description="Information level for the environment logging/observation."
-    )
-    horizon: PositiveInt = Field(
-        400, description="Time horizon (max steps) for each episode."
-    )
+    info_level: int = Field(1, description="Information level for the environment logging/observation.")
+    horizon: PositiveInt = Field(400, description="Time horizon (max steps) for each episode.")
 
 
 class Config(BaseModel):
@@ -47,6 +53,8 @@ class Config(BaseModel):
     wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
     env_config: EnvironmentConfig = Field(..., description="Environment config")
     training_config: TrainingConfig = Field(..., description="Training config")
+    video_dir: DirectoryPath = Field(default=Path("./videos"), description="Directory to save training videos")
+    eval_interval: PositiveInt = Field(default=1, description="Each n steps to record a video")
 
     @classmethod
     def from_files(
@@ -100,4 +108,13 @@ class Config(BaseModel):
             layouts=self.env_config.layouts,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
+        )
+
+    @property
+    def eval_env(self) -> VectorEnv:
+        return create_eval_env(
+            layouts=self.env_config.layouts,
+            info_level=self.env_config.info_level,
+            horizon=self.env_config.horizon,
+            video_folder=str(self.video_dir),
         )

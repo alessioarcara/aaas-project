@@ -17,6 +17,7 @@ dependencies = [
     "jax[cuda12]>=0.5.3",
     "loguru>=0.7.3",
     "matplotlib>=3.10.8",
+    "optax>=0.2.6",
     "overcooked-ai>=2.0.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
@@ -53,3 +54,7 @@ name = "src"
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:.*pkg_resources is deprecated.*:UserWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"

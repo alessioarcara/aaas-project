@@ -205,3 +205,4 @@ pyrightconfig.json
 
 wandb/
 .vscode/
+videos/*

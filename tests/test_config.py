@@ -2,18 +2,7 @@ import pytest
 import yaml
 
 from src.config import Config
-
-BASE_CONFIG = {
-    "exp_name": "test_exp",
-    "wandb_project_name": "test_proj",
-    "wandb_entity": "test_entity",
-    "env_config": {
-        "num_envs": 4,
-    },
-    "training_config": {
-        "num_steps": 100,
-    },
-}
+from tests.constants import BASE_CONFIG
 
 
 @pytest.fixture

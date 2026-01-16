@@ -35,12 +35,8 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
 
         for layout in layouts:
             mdp = OvercookedGridworld.from_layout_name(layout)
-            base_env = OvercookedEnv.from_mdp(
-                mdp, info_level=info_level, horizon=horizon
-            )
-            env = Overcooked(
-                base_env=base_env, featurize_fn=base_env.featurize_state_mdp
-            )
+            base_env = OvercookedEnv.from_mdp(mdp, info_level=info_level, horizon=horizon)
+            env = Overcooked(base_env=base_env, featurize_fn=base_env.featurize_state_mdp)
             self._envs.append(env)
 
         self._cur = self._envs[0]
@@ -93,9 +89,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         info = {"layout_name": self.layouts[idx]}
         return obs, info
 
-    def step(
-        self, action: OvercookedAction
-    ) -> Tuple[OvercookedObs, np.ndarray, bool, bool, Dict[str, Any]]:
+    def step(self, action: OvercookedAction) -> Tuple[OvercookedObs, np.ndarray, bool, bool, Dict[str, Any]]:
         """
         Execute one step within the environment.
 
@@ -108,12 +102,17 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         raw_obs, reward, done, info = self._cur.step(action)
         obs = self._process_obs(raw_obs)
 
-        rewards = np.array([reward] * self.n_agents, dtype=np.float32)
+        # HACK: Gymnasium `RecordEpisodeStatistics` wrapper attempts to write
+        # to the 'episode' key in 'info' when an episode ends.
+        # Overcooked env uses this key for its own purposes, so we rename it here
+        # to avoid conflicts when using the wrapper
+        if "episode" in info:
+            info["overcooked_episode"] = info.pop("episode")
 
         terminated = False
         truncated = bool(done)
 
-        return obs, rewards, terminated, truncated, info
+        return obs, float(reward), terminated, truncated, info
 
     def render(self) -> Optional[np.ndarray]:
         """
@@ -121,7 +120,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
             A NumPy array of shape (height, width, 3) representing the RGB image of the current state.
         """
         if self.render_mode == "rgb_array":
-            return self._cur.render(model="rgb_array")
+            return self._cur.render()
         return None
 
     def close(self) -> None:

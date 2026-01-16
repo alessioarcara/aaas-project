@@ -16,6 +16,11 @@ def fake_policy():
 
 @pytest.fixture
 def vector_env():
-    envs = create_vector_env(num_envs=NUM_ENVS)
+    envs = create_vector_env(
+        num_envs=NUM_ENVS,
+        layouts=["cramped_room"],
+        info_level=1,
+        horizon=400,
+    )
     yield envs
     envs.close()

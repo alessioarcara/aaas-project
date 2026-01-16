@@ -10,22 +10,35 @@ from src.agent import Agent
 @struct.dataclass
 class TrajectorySegment:
     obs: jax.Array  # (M, N, A, obs_dim)
+    actions: jax.Array  # (M, N, A)
+    log_probs: jax.Array  # (M, N, A)
     rewards: jax.Array  # (M, N, A)
     dones: jax.Array  # (M, N, A)
     values: jax.Array  # (M, N, A)
     last_value: jax.Array  # (N, A)
     last_done: jax.Array  # (N, A)
 
+    @jax.jit
+    def flatten(self):
+        ref_m, ref_n = self.obs.shape[:2]
+
+        def _maybe_flatten(x: jax.Array) -> jax.Array:
+            if x.shape[0] != ref_m:
+                return x
+
+            return x.reshape((ref_m * ref_n, *x.shape[2:]))
+
+        return jax.tree.map(_maybe_flatten, self)
+
 
 @struct.dataclass
 class Carry:
     obs: jax.Array  # (N, A, obs_dim)
     done: jax.Array  # (N, A)
+    key: jax.Array  # RNG key
 
 
-def collect_rollouts(
-    envs: VectorEnv, agent: Agent, num_steps: int, carry: Carry
-) -> tuple[TrajectorySegment, Carry]:
+def collect_rollouts(envs: VectorEnv, agent: Agent, num_steps: int, carry: Carry) -> tuple[TrajectorySegment, Carry]:
     """
     Collect rollout segments from vectorized environments
 
@@ -41,12 +54,15 @@ def collect_rollouts(
     """
     next_obs = np.array(carry.obs)
     next_done = np.array(carry.done)
+    key = carry.key
 
     n_envs = next_obs.shape[0]
     n_agents = next_obs.shape[1]
     obs_shape = next_obs.shape[2:]
 
     obs = np.zeros((num_steps, n_envs, n_agents, *obs_shape), dtype=next_obs.dtype)
+    actions = np.zeros((num_steps, n_envs, n_agents), dtype=np.int32)
+    log_probs = np.zeros((num_steps, n_envs, n_agents), dtype=np.float32)
     rewards = np.zeros((num_steps, n_envs, n_agents), dtype=np.float32)
     dones = np.zeros((num_steps, n_envs, n_agents), dtype=bool)
     values = np.zeros((num_steps, n_envs, n_agents), dtype=np.float32)
@@ -54,28 +70,37 @@ def collect_rollouts(
     for step in range(num_steps):
         obs[step] = next_obs
 
+        key, subkey = jax.random.split(key)
+
         obs_jnp = jax.device_put(next_obs)
-        action_jnp, value_jnp = agent.get_action_and_value(obs_jnp)
+        out = agent.get_action_and_value(obs=obs_jnp, key=subkey)
 
-        values[step] = np.array(value_jnp)
+        values[step] = np.array(out.value)
+        log_probs[step] = np.array(out.action_log_prob)
+        actions[step] = np.array(out.action)
 
-        action = np.array(action_jnp)
-        next_obs, reward, terminated, truncated, _ = envs.step(action)
+        next_obs, reward, terminated, truncated, info = envs.step(actions[step])
+
+        # ! HACK: if reward is (n_envs,), make it (n_envs, n_agents)
+        if reward.ndim == 1:
+            reward = np.repeat(reward[:, np.newaxis], n_agents, axis=1)
+
         done = np.logical_or(terminated, truncated)
 
-        # (n_envs) -> (n_envs, n_agents)
+        # ! HACK: (n_envs) -> (n_envs, n_agents)
         done_broadcast = np.repeat(done[:, np.newaxis], n_agents, axis=1)
 
         rewards[step] = reward
         dones[step] = done_broadcast
-
         next_done = done_broadcast
 
     last_obs_jnp = jax.device_put(next_obs)
-    _, last_value_jnp = agent.get_action_and_value(last_obs_jnp)
+    last_value_jnp = agent.get_value(last_obs_jnp)
 
     segment = TrajectorySegment(
         obs=jnp.array(obs),
+        actions=jnp.array(actions),
+        log_probs=jnp.array(log_probs),
         rewards=jnp.array(rewards),
         dones=jnp.array(dones),
         values=jnp.array(values),
@@ -86,15 +111,16 @@ def collect_rollouts(
     carry = Carry(
         obs=jnp.array(next_obs),
         done=jnp.array(next_done),
+        key=key,
     )
 
     return segment, carry
 
 
 @jax.jit
-def compute_gae(
-    segment: TrajectorySegment, gamma: float, lam: float
-) -> tuple[jax.Array, jax.Array]:
+def compute_gae(segment: TrajectorySegment, gamma: float, lam: float) -> tuple[jax.Array, jax.Array]:
+    """ """
+
     def gae_step(
         carry: tuple[jax.Array, jax.Array],
         step_data: tuple[jax.Array, jax.Array, jax.Array],
