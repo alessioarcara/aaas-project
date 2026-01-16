@@ -6,7 +6,6 @@ import optax
 from flax import nnx, struct
 from gymnasium.vector.vector_env import VectorEnv
 
-import wandb
 from src.nets import MLP
 
 if TYPE_CHECKING:
@@ -135,6 +134,9 @@ class Agent(nnx.Module):
 
         indices = jnp.arange(dataset_size)
 
+        b_metrics = None
+        num_minibatches = dataset_size // minibatch_size
+
         for _ in range(self.cfg.update_epochs):
             key, subkey = jax.random.split(key)
             perm_indices = jax.random.permutation(subkey, indices)
@@ -151,6 +153,13 @@ class Agent(nnx.Module):
                     returns=b_returns[mb_indices],
                 )
 
-                metrics = self.train_step(mb)
+                mb_metrics = self.train_step(mb)
 
-                wandb.log({f"train/{k}": v.item() for k, v in metrics.items()})
+                if b_metrics is None:
+                    b_metrics = mb_metrics
+                else:
+                    b_metrics = jax.tree_util.tree_map(jnp.add, b_metrics, mb_metrics)
+
+        avg_metrics = jax.tree_util.tree_map(lambda x: x / (num_minibatches * self.cfg.update_epochs), b_metrics)
+
+        return avg_metrics

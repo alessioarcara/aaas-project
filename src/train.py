@@ -19,8 +19,6 @@ def eval_agent(agent: Agent, eval_env: gymnasium.Env):
     """
     Using the deterministic policy, evaluate the agent in the eval_env
     """
-    # ? open and close the env for each evaluation
-    # ? is it necessary?
     obs, _ = eval_env.reset()
 
     done = False
@@ -29,11 +27,10 @@ def eval_agent(agent: Agent, eval_env: gymnasium.Env):
         action = agent.get_deterministic_action(obs_jnp)
         action = np.array(action)
 
-        obs, rewards, terminated, truncated, info = eval_env.step(action)
-        logger.debug(info)
+        obs, _, terminated, truncated, info = eval_env.step(action)
         done = terminated or truncated
 
-    wandb.log({"eval/episode_reward": info.get("episode", {}).get("r", 0.0)})
+    return info.get("episode", {}).get("r", 0.0)
 
 
 def train(cfg: Config):
@@ -87,14 +84,15 @@ def train(cfg: Config):
 
             key, learn_key = jax.random.split(key)
 
-            _ = agent.learn_from(segment, advantages, returns, learn_key)
+            metrics = agent.learn_from(segment, advantages, returns, learn_key)
+
+            log_data = {f"train/{k}": v.item() for k, v in metrics.items()}
 
             if cfg.eval_interval > 0 and (update + 1) % cfg.eval_interval == 0:
-                eval_agent(agent, eval_env)
+                log_data["eval/episode_reward"] = eval_agent(agent, eval_env)
 
-                video_path = latest_video_path(video_dir)
-                if video_path is not None:
-                    wandb.log({"eval/video": wandb.Video(video_path, format="mp4")})
+                if vid_path := latest_video_path(cfg.video_dir):
+                    log_data["eval/video"] = wandb.Video(str(vid_path), format="mp4")
 
     except KeyboardInterrupt:
         logger.warning("⚠️ Training interrupted by user.")
@@ -104,4 +102,5 @@ def train(cfg: Config):
 
     finally:
         envs.close()
+        eval_env.close()
         wandb.finish()
