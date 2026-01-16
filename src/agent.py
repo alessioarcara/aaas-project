@@ -6,6 +6,7 @@ import optax
 from flax import nnx, struct
 from gymnasium.vector.vector_env import VectorEnv
 
+import wandb
 from src.nets import MLP
 
 if TYPE_CHECKING:
@@ -42,7 +43,7 @@ class Agent(nnx.Module):
         self.critic = MLP(din=din, dhid=64, dout=1, out_scale=1.0, rngs=rngs)
         self.policy = MLP(din=din, dhid=64, dout=act_shape, out_scale=0.01, rngs=rngs)
 
-        self.optim = nnx.optimizer.Optimizer(self, optax.adam(cfg.learning_rate), wrt=nnx.Param)
+        self.optim = nnx.optimizer.Optimizer(self, optax.adam(cfg.learning_rate, eps=1e-5), wrt=nnx.Param)
 
     @nnx.jit
     def get_deterministic_action(self, obs: jax.Array) -> jax.Array:
@@ -83,8 +84,8 @@ class Agent(nnx.Module):
         )
 
     @nnx.jit
-    def train_step(self, mb: Minibatch):
-        def loss_fn(model: "Agent"):
+    def train_step(self, mb: Minibatch) -> dict[str, jax.Array]:
+        def loss_fn(model: "Agent") -> tuple[jax.Array, dict[str, jax.Array]]:
             out = model.get_action_and_value(mb.obs, action=mb.actions)
 
             # * Policy loss
@@ -98,13 +99,21 @@ class Agent(nnx.Module):
             # * Value loss
             v_loss = jnp.mean((out.value - mb.returns) ** 2)
 
-            loss = pg_loss + v_loss
+            # * Entropy
+            entropy = out.entropy.mean()
+            loss = pg_loss - (self.cfg.entropy_coef * entropy) + (self.cfg.value_coef * v_loss)
 
-            return loss
+            return loss, {
+                "policy_loss": pg_loss,
+                "value_loss": v_loss,
+                "entropy": entropy,
+            }
 
-        grad_fn = nnx.value_and_grad(loss_fn, has_aux=False)
-        loss, grads = grad_fn(self)
+        grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
+        (loss, aux), grads = grad_fn(self)
         self.optim.update(grads)
+
+        return aux
 
     def learn_from(
         self,
@@ -142,4 +151,6 @@ class Agent(nnx.Module):
                     returns=b_returns[mb_indices],
                 )
 
-                self.train_step(mb)
+                metrics = self.train_step(mb)
+
+                wandb.log({f"train/{k}": v.item() for k, v in metrics.items()})

@@ -79,7 +79,7 @@ def collect_rollouts(envs: VectorEnv, agent: Agent, num_steps: int, carry: Carry
         log_probs[step] = np.array(out.action_log_prob)
         actions[step] = np.array(out.action)
 
-        next_obs, reward, terminated, truncated, _ = envs.step(actions[step])
+        next_obs, reward, terminated, truncated, info = envs.step(actions[step])
 
         # ! HACK: if reward is (n_envs,), make it (n_envs, n_agents)
         if reward.ndim == 1:
@@ -119,6 +119,8 @@ def collect_rollouts(envs: VectorEnv, agent: Agent, num_steps: int, carry: Carry
 
 @jax.jit
 def compute_gae(segment: TrajectorySegment, gamma: float, lam: float) -> tuple[jax.Array, jax.Array]:
+    """ """
+
     def gae_step(
         carry: tuple[jax.Array, jax.Array],
         step_data: tuple[jax.Array, jax.Array, jax.Array],
