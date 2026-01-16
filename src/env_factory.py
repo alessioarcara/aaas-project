@@ -1,6 +1,3 @@
-from pathlib import Path
-
-import gymnasium as gym
 from gymnasium.vector import AsyncVectorEnv, VectorEnv
 from pydantic.validate_call_decorator import validate_call
 
@@ -14,31 +11,18 @@ def create_vector_env(
     layouts: list[LayoutName],
     info_level: int,
     horizon: int,
-    video_dir: Path,
-    video_interval: int,
-    should_record_video: bool = True,
 ) -> VectorEnv:
-    def make_env(idx: int):
+    def make_env():
         def _thunk():
-            # only first env renders to rgb_array for video recording
-            render_mode = "rgb_array" if idx == 0 else None
-            env = OvercookedGym(
+            return OvercookedGym(
                 layouts=layouts,
                 info_level=info_level,
                 horizon=horizon,
-                render_mode=render_mode,
+                render_mode=None,
             )
-
-            if should_record_video and idx == 0:
-                env = gym.wrappers.RecordVideo(
-                    env,
-                    video_folder=str(video_dir),
-                    step_trigger=lambda s: s % video_interval == 0,
-                )
-            return env
 
         return _thunk
 
-    envs = AsyncVectorEnv([make_env(i) for i in range(num_envs)])
-    # envs = gym.wrappers.vector.RecordEpisodeStatistics(envs)
+    envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
+
     return envs

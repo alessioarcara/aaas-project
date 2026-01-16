@@ -21,9 +21,6 @@ def vector_env():
         layouts=["cramped_room"],
         info_level=1,
         horizon=400,
-        video_dir="./videos",
-        video_interval=200,
-        should_record_video=False,
     )
     yield envs
     envs.close()

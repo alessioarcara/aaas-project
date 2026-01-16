@@ -1,44 +1,16 @@
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import jax
 import jax.numpy as jnp
-from flax import nnx
+import optax
+from flax import nnx, struct
 from gymnasium.vector.vector_env import VectorEnv
-from flax import struct
 
+from src.nets import MLP
 
-class MLP(nnx.Module):
-    def __init__(
-        self,
-        din: int,
-        dhid: int,
-        dout: int,
-        out_scale: float,
-        rngs: nnx.Rngs,
-    ):
-        hidden_init = nnx.initializers.orthogonal(jnp.sqrt(2))
-        bias_init = nnx.initializers.zeros
-        out_init = nnx.initializers.orthogonal(out_scale)
-
-        self.lin1 = nnx.Linear(
-            din, dhid, rngs=rngs, kernel_init=hidden_init, bias_init=bias_init
-        )
-        self.lin2 = nnx.Linear(
-            dhid, dhid, rngs=rngs, kernel_init=hidden_init, bias_init=bias_init
-        )
-        self.lin3 = nnx.Linear(
-            dhid, dout, rngs=rngs, kernel_init=out_init, bias_init=bias_init
-        )
-
-    def __call__(self, x: jax.Array) -> jax.Array:
-        x = self.lin1(x)
-        x = nnx.tanh(x)
-
-        x = self.lin2(x)
-        x = nnx.tanh(x)
-
-        x = self.lin3(x)
-        return x
+if TYPE_CHECKING:
+    from src.config import TrainingConfig
+    from src.rollout import TrajectorySegment
 
 
 @struct.dataclass
@@ -49,40 +21,47 @@ class AgentOutput:
     value: jax.Array
 
 
+@struct.dataclass
+class Minibatch:
+    obs: jax.Array
+    actions: jax.Array
+    log_probs: jax.Array
+    advantages: jax.Array
+    returns: jax.Array
+
+
 class Agent(nnx.Module):
-    def __init__(self, envs: VectorEnv, rngs: nnx.Rngs):
+    def __init__(self, cfg: "TrainingConfig", envs: VectorEnv, rngs: nnx.Rngs):
+        self.cfg = cfg
         obs_shape = envs.single_observation_space.shape
         act_shape = envs.single_action_space.n
 
         # din = int(jnp.prod(jnp.array(obs_shape)))
         din = obs_shape[-1]
 
-        self.critic = MLP(
-            din=din,
-            dhid=64,
-            dout=1,
-            out_scale=1.0,
-            rngs=rngs,
-        )
-        self.policy = MLP(
-            din=din,
-            dhid=64,
-            dout=act_shape,
-            out_scale=0.01,
-            rngs=rngs,
-        )
+        self.critic = MLP(din=din, dhid=64, dout=1, out_scale=1.0, rngs=rngs)
+        self.policy = MLP(din=din, dhid=64, dout=act_shape, out_scale=0.01, rngs=rngs)
 
-    def get_value(self, obs_jnp: jax.Array) -> jax.Array:
-        return self.critic(obs_jnp).squeeze(-1)
+        self.optim = nnx.optimizer.Optimizer(self, optax.adam(cfg.learning_rate), wrt=nnx.Param)
 
+    @nnx.jit
+    def get_deterministic_action(self, obs: jax.Array) -> jax.Array:
+        logits = self.policy(obs)
+        return jnp.argmax(logits, axis=-1)
+
+    @nnx.jit
+    def get_value(self, obs: jax.Array) -> jax.Array:
+        return self.critic(obs).squeeze(-1)
+
+    @nnx.jit
     def get_action_and_value(
         self,
-        obs_jnp: jax.Array,
-        key: Optional[jax.Array] = None,
+        obs: jax.Array,
         action: Optional[jax.Array] = None,
+        key: Optional[jax.Array] = None,
     ) -> AgentOutput:
-        logits = self.policy(obs_jnp)
-        value = self.critic(obs_jnp).squeeze(-1)
+        logits = self.policy(obs)
+        value = self.critic(obs).squeeze(-1)
 
         if action is None:
             if key is None:
@@ -90,9 +69,7 @@ class Agent(nnx.Module):
             action = jax.random.categorical(key, logits)
 
         log_probs_all = nnx.log_softmax(logits)
-        action_log_prob = jnp.take_along_axis(
-            log_probs_all, action[..., None], axis=-1
-        ).squeeze(-1)
+        action_log_prob = jnp.take_along_axis(log_probs_all, action[..., None], axis=-1).squeeze(-1)
 
         # # H(x) = - sum(p(x) * log(p(x)))
         probs = nnx.softmax(logits)
@@ -104,3 +81,65 @@ class Agent(nnx.Module):
             entropy=entropy,
             value=value,
         )
+
+    @nnx.jit
+    def train_step(self, mb: Minibatch):
+        def loss_fn(model: "Agent"):
+            out = model.get_action_and_value(mb.obs, action=mb.actions)
+
+            # * Policy loss
+            logratio = out.action_log_prob - mb.log_probs
+            ratio = jnp.exp(logratio)
+
+            pg_loss1 = -mb.advantages * ratio
+            pg_loss2 = -mb.advantages * jnp.clip(ratio, 1 - self.cfg.epsilon, 1 + self.cfg.epsilon)
+            pg_loss = jnp.mean(jnp.maximum(pg_loss1, pg_loss2))
+
+            # * Value loss
+            v_loss = jnp.mean((out.value - mb.returns) ** 2)
+
+            loss = pg_loss + v_loss
+
+            return loss
+
+        grad_fn = nnx.value_and_grad(loss_fn, has_aux=False)
+        loss, grads = grad_fn(self)
+        self.optim.update(grads)
+
+    def learn_from(
+        self,
+        segment: "TrajectorySegment",
+        advantages: jax.Array,
+        returns: jax.Array,
+        key: jax.Array,
+    ):
+        """
+        TODO: add docstring
+        """
+        flat_segment = segment.flatten()
+        b_obs = flat_segment.obs  # (M * N, A, obs_dim)
+        b_advantages = advantages.reshape(b_obs.shape[0], -1)  # (M * N,)
+        b_returns = returns.reshape(b_obs.shape[0], -1)  # (M * N,)
+
+        dataset_size = b_obs.shape[0]
+        minibatch_size = self.cfg.minibatch_size
+
+        indices = jnp.arange(dataset_size)
+
+        for _ in range(self.cfg.update_epochs):
+            key, subkey = jax.random.split(key)
+            perm_indices = jax.random.permutation(subkey, indices)
+
+            for start in range(0, dataset_size, minibatch_size):
+                end = start + minibatch_size
+                mb_indices = perm_indices[start:end]
+
+                mb = Minibatch(
+                    obs=b_obs[mb_indices],
+                    actions=flat_segment.actions[mb_indices],
+                    log_probs=flat_segment.log_probs[mb_indices],
+                    advantages=b_advantages[mb_indices],
+                    returns=b_returns[mb_indices],
+                )
+
+                self.train_step(mb)

@@ -35,12 +35,8 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
 
         for layout in layouts:
             mdp = OvercookedGridworld.from_layout_name(layout)
-            base_env = OvercookedEnv.from_mdp(
-                mdp, info_level=info_level, horizon=horizon
-            )
-            env = Overcooked(
-                base_env=base_env, featurize_fn=base_env.featurize_state_mdp
-            )
+            base_env = OvercookedEnv.from_mdp(mdp, info_level=info_level, horizon=horizon)
+            env = Overcooked(base_env=base_env, featurize_fn=base_env.featurize_state_mdp)
             self._envs.append(env)
 
         self._cur = self._envs[0]
@@ -93,9 +89,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         info = {"layout_name": self.layouts[idx]}
         return obs, info
 
-    def step(
-        self, action: OvercookedAction
-    ) -> Tuple[OvercookedObs, np.ndarray, bool, bool, Dict[str, Any]]:
+    def step(self, action: OvercookedAction) -> Tuple[OvercookedObs, np.ndarray, bool, bool, Dict[str, Any]]:
         """
         Execute one step within the environment.
 

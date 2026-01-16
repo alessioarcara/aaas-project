@@ -32,9 +32,7 @@ def build_from_config(value: dict | list[dict] | Any, *registries: Registry):
 
             # Resolve parameters recursively BEFORE passing to the constructor
             # This ensures nested objects are built first
-            resolved_params = {
-                k: build_from_config(v, *registries) for k, v in params.items()
-            }
+            resolved_params = {k: build_from_config(v, *registries) for k, v in params.items()}
 
             # Find the class in the provided registries
             cls_to_init = None
@@ -44,17 +42,13 @@ def build_from_config(value: dict | list[dict] | Any, *registries: Registry):
                     break
 
             if cls_to_init is None:
-                raise KeyError(
-                    f"Class {cls_name} not found in any of the provided registries"
-                )
+                raise KeyError(f"Class {cls_name} not found in any of the provided registries")
 
             try:
                 # Instantiate the class with resolved parameters
                 return cls_to_init(**resolved_params)
             except Exception as e:
-                raise ValueError(
-                    f"Failed to instantiate {cls_name} with params {params}: {e}"
-                )
+                raise ValueError(f"Failed to instantiate {cls_name} with params {params}: {e}")
 
         # if doesn't have 'type', it is a standard dict -> recursive call for each value
         return {k: build_from_config(val, *registries) for k, val in value.items()}

@@ -1,3 +1,4 @@
+from scipy.stats import entropy
 import sys
 from pathlib import Path
 from typing import Any, Optional, Self
@@ -14,9 +15,7 @@ from src.utils.typings import LayoutName
 
 
 class TrainingConfig(BaseModel):
-    total_updates: PositiveInt = Field(
-        ..., description="Total number of training updates"
-    )
+    total_updates: PositiveInt = Field(..., description="Total number of training updates")
     num_steps: PositiveInt = Field(
         ...,
         description="Number of steps collected in the fixed-length trajectory segments",
@@ -26,6 +25,14 @@ class TrainingConfig(BaseModel):
         description="Controls the bias-variance trade-off for advantage estimation",
     )
     gae_gamma: float = Field(0.99, description="Discount factor for future rewards")
+    # TODO: add description
+    epsilon: float = Field(0.2)
+    minibatch_size: PositiveInt = Field(...)
+    update_epochs: PositiveInt = Field(
+        ..., description="The number of times to iterate through the entire collected rollout segment for update."
+    )
+    learning_rate: float = Field(...)
+    value_coef: float = Field(..., description="Coefficient for the value loss term")
 
 
 class EnvironmentConfig(BaseModel):
@@ -35,12 +42,8 @@ class EnvironmentConfig(BaseModel):
         min_length=1,
         description="List of Overcooked layouts to use for training (must contain at least one).",
     )
-    info_level: int = Field(
-        1, description="Information level for the environment logging/observation."
-    )
-    horizon: PositiveInt = Field(
-        400, description="Time horizon (max steps) for each episode."
-    )
+    info_level: int = Field(1, description="Information level for the environment logging/observation.")
+    horizon: PositiveInt = Field(400, description="Time horizon (max steps) for each episode.")
 
 
 class Config(BaseModel):
@@ -50,12 +53,8 @@ class Config(BaseModel):
     wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
     env_config: EnvironmentConfig = Field(..., description="Environment config")
     training_config: TrainingConfig = Field(..., description="Training config")
-    video_dir: DirectoryPath = Field(
-        default=Path("./videos"), description="Directory to save training videos"
-    )
-    video_interval: PositiveInt = Field(
-        default=1000, description="Each n steps to record a video"
-    )
+    video_dir: DirectoryPath = Field(default=Path("./videos"), description="Directory to save training videos")
+    video_interval: PositiveInt = Field(default=1000, description="Each n steps to record a video")
 
     @classmethod
     def from_files(
@@ -109,6 +108,4 @@ class Config(BaseModel):
             layouts=self.env_config.layouts,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
-            video_dir=self.video_dir,
-            video_interval=self.video_interval,
         )

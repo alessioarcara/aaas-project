@@ -10,9 +10,7 @@ def test_async_vector_env(vector_env):
     assert obs.shape[0] == NUM_ENVS
     assert obs.shape[0] == NUM_ENVS
 
-    obs, rewards, terminated, truncated, info = vector_env.step(
-        np.zeros((NUM_ENVS, 2), dtype=np.int32)
-    )
+    obs, rewards, terminated, truncated, info = vector_env.step(np.zeros((NUM_ENVS, 2), dtype=np.int32))
 
     assert obs.shape[0] == NUM_ENVS
     assert obs.shape[0] == NUM_ENVS
@@ -37,9 +35,7 @@ def test_full_episode(vector_env, fake_policy, steps, expect_done):
     max_steps = steps
 
     for _ in range(max_steps):
-        next_obs, rewards, terminated, truncated, info = vector_env.step(
-            np.zeros((NUM_ENVS, 2), dtype=np.int32)
-        )
+        next_obs, rewards, terminated, truncated, info = vector_env.step(np.zeros((NUM_ENVS, 2), dtype=np.int32))
 
         has_terminated_or_truncated = np.logical_or(terminated, truncated)
 

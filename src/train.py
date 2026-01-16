@@ -1,16 +1,15 @@
 import shutil
+
+import jax
 import jax.numpy as jnp
+from flax import nnx
 from loguru import logger
+from tqdm import tqdm
 
 import wandb
 from src.agent import Agent
 from src.config import Config
 from src.rollout import Carry, collect_rollouts, compute_gae
-
-# from src.utils.misc import latest_video_path
-import flax.nnx as nnx
-import jax
-from tqdm import tqdm
 
 
 def train(cfg: Config):
@@ -22,32 +21,32 @@ def train(cfg: Config):
     key = jax.random.key(cfg.seed)
 
     envs = cfg.envs
-    agent = Agent(envs, nnx.Rngs(cfg.seed))
+
+    agent = Agent(cfg.training_config, envs, nnx.Rngs(cfg.seed))
 
     wandb.init(
         project=cfg.wandb_project_name,
         entity=cfg.wandb_entity,
         name=cfg.exp_name,
+        config=cfg.model_dump(),
     )
 
     try:
         obs, _ = envs.reset()
 
-        key, subkey = jax.random.split(key)
+        key, rollout_key = jax.random.split(key)
 
         carry = Carry(
             jnp.array(obs),
             jnp.zeros(envs.num_envs, dtype=bool),
-            subkey,
+            rollout_key,
         )
 
-        num_updates = cfg.training_config.total_updates // (
-            cfg.training_config.num_steps * cfg.env_config.num_envs
-        )
+        total_timesteps = cfg.training_config.total_updates
+        steps_per_update = cfg.training_config.num_steps * cfg.env_config.num_envs
+        num_updates = total_timesteps // steps_per_update
 
-        for update in tqdm(
-            range(num_updates), desc="Training", unit="update", colour="green"
-        ):
+        for update in tqdm(range(num_updates), desc="Training", unit="update", colour="blue"):
             segment, carry = collect_rollouts(
                 envs,
                 agent,
@@ -61,13 +60,14 @@ def train(cfg: Config):
                 cfg.training_config.gae_gamma,
             )
 
-            # video = latest_video_path(cfg.video_dir)
+            key, learn_key = jax.random.split(key)
 
-            # if video:
-            #    wandb.log({"media/gameplay": wandb.Video(str(video), format="mp4")})
+            _ = agent.learn_from(segment, advantages, returns, learn_key)
 
+    except KeyboardInterrupt:
+        logger.warning("⚠️ Training interrupted by user.")
     except Exception as e:
-        logger.error(f"An error occurred during training: {e}")
+        logger.exception("❌ Unhandled exception during training: {}", e)
         raise e
 
     finally:

@@ -13,9 +13,8 @@ def main(config_paths: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Train segmentation model on StreetHazards"
-    )
+    # TODO: add description
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--configs",
         type=str,
