@@ -8,7 +8,7 @@ from pydantic import BaseModel, DirectoryPath, Field, ValidationError
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
-from src.env_factory import create_eval_env, create_vector_env
+from src.env_factory import create_eval_env, create_train_envs
 from src.utils.io import read_yaml
 from src.utils.typings import LayoutName, ShapingMode
 
@@ -31,10 +31,22 @@ class TrainingConfig(BaseModel):
     )
     learning_rate: float = Field(...)
     adam_epsilon: float = Field(1e-5, description="Epsilon parameter for the Adam optimizer")
+    adam_momentum: float = Field(0.9, description="Momentum parameter for the Adam optimizer")
     value_coef: float = Field(
         0.5, description="Coefficient scaling the value function loss in the total loss objective."
     )
     entropy_coef: float = Field(0.01, description="Coefficient scaling the entropy bonus to encourage exploration.")
+    use_learning_rate_annealing: bool = Field(
+        True, description="Whether to linearly anneal the learning rate during training."
+    )
+    use_advantage_normalization: bool = Field(True, description="Whether to normalize the computed advantages.")
+    use_gradient_clipping: bool = Field(
+        False, description="Whether to clip gradients by global norm during the optimization step."
+    )
+    target_kl: Optional[float] = Field(
+        None,
+        description="Target KL divergence for early stopping the current update. If None, no early stopping is used.",
+    )
 
 
 class EnvironmentConfig(BaseModel):
@@ -107,8 +119,8 @@ class Config(BaseModel):
             sys.exit(1)
 
     @property
-    def envs(self) -> VectorEnv:
-        return create_vector_env(
+    def train_envs(self) -> VectorEnv:
+        return create_train_envs(
             num_envs=self.env_config.num_envs,
             layouts=self.env_config.layouts,
             info_level=self.env_config.info_level,

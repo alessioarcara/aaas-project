@@ -13,11 +13,14 @@ env_config:
   shaping_mode: "shared"
 training_config:
   num_steps: 400
-  total_updates: 5_000_000
-  gae_lambda: 0.95
+  total_updates: 10_000_000
+  gae_lambda: 0.90
   gae_gamma: 0.99
   update_epochs: 4
   minibatch_size: 4096
   learning_rate: 2.5e-4
   value_coef: 0.5
   entropy_coef: 0.1
+  use_learning_rate_annealing: true
+  use_advantage_normalization: true
+  use_gradient_clipping: true

@@ -8,7 +8,7 @@ from src.wrappers import OvercookedVectorRewardShapingWrapper
 
 
 @validate_call
-def create_vector_env(
+def create_train_envs(
     num_envs: int, layouts: list[LayoutName], info_level: int, horizon: int, shaping_mode: ShapingMode
 ) -> VectorEnv:
     def make_env():
@@ -23,6 +23,7 @@ def create_vector_env(
     return envs
 
 
+@validate_call
 def create_eval_env(layouts: list[LayoutName], info_level: int, horizon: int, video_folder: str) -> VectorEnv:
     env = OvercookedGym(layouts=layouts, info_level=info_level, horizon=horizon, render_mode="rgb_array")
     env = RecordEpisodeStatistics(env)
