@@ -1,3 +1,4 @@
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal, TypeAlias
 
@@ -15,3 +16,9 @@ LayoutName: TypeAlias = Literal[
 
 OvercookedObs: TypeAlias = np.ndarray  # shape: (n_agents, obs_dim)
 OvercookedAction: TypeAlias = tuple[int, int]  # (action_agent_0, action_agent_1)
+
+
+class ShapingMode(StrEnum):
+    INDIVIDUAL = "individual"
+    SHARED = "shared"
+    NONE = "none"

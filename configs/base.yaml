@@ -10,6 +10,7 @@ env_config:
     - "cramped_room"
   info_level: 0
   horizon: 400
+  shaping_mode: "shared"
 training_config:
   num_steps: 400
   total_updates: 5_000_000
