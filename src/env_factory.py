@@ -3,13 +3,13 @@ from gymnasium.wrappers import RecordEpisodeStatistics, RecordVideo
 from pydantic.validate_call_decorator import validate_call
 
 from src.overcooked_env import OvercookedGym
-from src.utils.typings import LayoutName
+from src.utils.typings import LayoutName, ShapingMode
 from src.wrappers import OvercookedRewardShapingWrapper
 
 
 @validate_call
 def create_vector_env(
-    num_envs: int, layouts: list[LayoutName], info_level: int, horizon: int, use_reward_shaping: bool
+    num_envs: int, layouts: list[LayoutName], info_level: int, horizon: int, shaping_mode: ShapingMode
 ) -> VectorEnv:
     def make_env():
         def _thunk():
@@ -19,8 +19,7 @@ def create_vector_env(
                 horizon=horizon,
                 render_mode=None,
             )
-            if use_reward_shaping:
-                env = OvercookedRewardShapingWrapper(env)
+            env = OvercookedRewardShapingWrapper(env, shaping_mode=shaping_mode)
             return env
 
         return _thunk

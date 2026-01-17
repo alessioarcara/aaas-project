@@ -92,7 +92,7 @@ class Agent(nnx.Module):
             ratio = jnp.exp(logratio)
 
             pg_loss1 = -mb.advantages * ratio
-            pg_loss2 = -mb.advantages * jnp.clip(ratio, 1 - self.cfg.epsilon, 1 + self.cfg.epsilon)
+            pg_loss2 = -mb.advantages * jnp.clip(ratio, 1 - self.cfg.ppo_epsilon, 1 + self.cfg.ppo_epsilon)
             pg_loss = jnp.mean(jnp.maximum(pg_loss1, pg_loss2))
 
             # * Value loss

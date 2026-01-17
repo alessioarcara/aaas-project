@@ -94,6 +94,8 @@ def train(cfg: Config):
                 if vid_path := latest_video_path(cfg.video_dir):
                     log_data["eval/video"] = wandb.Video(str(vid_path), format="mp4")
 
+            wandb.log(log_data, step=(update + 1) * steps_per_update)
+
     except KeyboardInterrupt:
         logger.warning("⚠️ Training interrupted by user.")
     except Exception as e:

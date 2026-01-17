@@ -10,7 +10,7 @@ from pydantic.types import PositiveInt
 from src.config.utils import _deep_merge
 from src.env_factory import create_eval_env, create_vector_env
 from src.utils.io import read_yaml
-from src.utils.typings import LayoutName
+from src.utils.typings import LayoutName, ShapingMode
 
 
 class TrainingConfig(BaseModel):
@@ -46,7 +46,9 @@ class EnvironmentConfig(BaseModel):
     )
     info_level: int = Field(1, description="Information level for the environment logging/observation.")
     horizon: PositiveInt = Field(400, description="Time horizon (max steps) for each episode.")
-    use_reward_shaping: bool = Field(True, description="Whether to use reward shaping in the Overcooked environment.")
+    shaping_mode: ShapingMode = Field(
+        default=ShapingMode.NONE, description="Mode of reward shaping to use in the environment."
+    )
 
 
 class Config(BaseModel):
@@ -111,6 +113,7 @@ class Config(BaseModel):
             layouts=self.env_config.layouts,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
+            use_reward_shaping=self.env_config.use_reward_shaping,
         )
 
     @property
