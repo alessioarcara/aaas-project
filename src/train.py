@@ -34,6 +34,11 @@ def eval_agent(agent: Agent, eval_env: gymnasium.Env):
 
 
 def train(cfg: Config):
+    """
+    1. Collect rollouts
+    2. Compute GAE advantages and returns
+    3. Update agent using collected data
+    """
     video_dir = cfg.video_dir
     if video_dir.exists():
         shutil.rmtree(video_dir)
@@ -41,10 +46,19 @@ def train(cfg: Config):
 
     key = jax.random.key(cfg.seed)
 
-    envs = cfg.envs
+    train_envs = cfg.train_envs
     eval_env = cfg.eval_env
 
-    agent = Agent(cfg.training_config, envs, nnx.Rngs(cfg.seed))
+    total_updates = cfg.training_config.total_updates
+    batch_size = cfg.training_config.num_steps * cfg.env_config.num_envs
+    num_updates = total_updates // batch_size
+
+    agent = Agent(
+        cfg=cfg.training_config,
+        envs=train_envs,
+        rngs=nnx.Rngs(cfg.seed),
+        total_steps=total_updates,
+    )
 
     wandb.init(
         project=cfg.wandb_project_name,
@@ -54,23 +68,18 @@ def train(cfg: Config):
     )
 
     try:
-        obs, _ = envs.reset()
-
+        obs, _ = train_envs.reset()
         key, rollout_key = jax.random.split(key)
 
         carry = Carry(
             jnp.array(obs),
-            jnp.zeros(envs.num_envs, dtype=bool),
+            jnp.zeros(train_envs.num_envs, dtype=bool),
             rollout_key,
         )
 
-        total_updates = cfg.training_config.total_updates
-        steps_per_update = cfg.training_config.num_steps * cfg.env_config.num_envs
-        num_updates = total_updates // steps_per_update
-
-        for update in tqdm(range(num_updates), desc="Training", unit="update", colour="blue"):
+        for update in tqdm(range(1, num_updates + 1), desc="Training", unit="update", colour="blue"):
             segment, carry = collect_rollouts(
-                envs,
+                train_envs,
                 agent,
                 cfg.training_config.num_steps,
                 carry,
@@ -83,18 +92,20 @@ def train(cfg: Config):
             )
 
             key, learn_key = jax.random.split(key)
-
             metrics = agent.learn_from(segment, advantages, returns, learn_key)
 
-            log_data = {f"train/{k}": v.item() for k, v in metrics.items()}
+            global_step = update * batch_size
 
-            if cfg.eval_interval > 0 and (update + 1) % cfg.eval_interval == 0:
+            log_data = {f"train/{k}": v.item() for k, v in metrics.items()}
+            log_data["train/lr"] = agent.get_learning_rate(global_step).item()
+
+            if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
                 log_data["eval/episode_reward"] = eval_agent(agent, eval_env)
 
                 if vid_path := latest_video_path(cfg.video_dir):
                     log_data["eval/video"] = wandb.Video(str(vid_path), format="mp4")
 
-            wandb.log(log_data, step=(update + 1) * steps_per_update)
+            wandb.log(log_data, step=global_step)
 
     except KeyboardInterrupt:
         logger.warning("⚠️ Training interrupted by user.")
@@ -103,6 +114,6 @@ def train(cfg: Config):
         raise e
 
     finally:
-        envs.close()
+        train_envs.close()
         eval_env.close()
         wandb.finish()

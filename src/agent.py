@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import optax
 from flax import nnx, struct
 from gymnasium.vector.vector_env import VectorEnv
+from loguru import logger
 
 from src.nets import MLP
 
@@ -31,7 +32,13 @@ class Minibatch:
 
 
 class Agent(nnx.Module):
-    def __init__(self, cfg: "TrainingConfig", envs: VectorEnv, rngs: nnx.Rngs):
+    def __init__(
+        self,
+        cfg: "TrainingConfig",
+        envs: VectorEnv,
+        rngs: nnx.Rngs,
+        total_steps: int,
+    ):
         self.cfg = cfg
         obs_shape = envs.single_observation_space.shape
         act_shape = envs.single_action_space.n
@@ -39,10 +46,27 @@ class Agent(nnx.Module):
         # din = int(jnp.prod(jnp.array(obs_shape)))
         din = obs_shape[-1]
 
-        self.critic = MLP(din=din, dhid=64, dout=1, out_scale=1.0, rngs=rngs)
+        self.critic = MLP(din=din, dhid=256, dout=1, out_scale=1.0, rngs=rngs)
         self.policy = MLP(din=din, dhid=64, dout=act_shape, out_scale=0.01, rngs=rngs)
 
-        self.optim = nnx.optimizer.Optimizer(self, optax.adam(cfg.learning_rate, eps=1e-5), wrt=nnx.Param)
+        if cfg.use_learning_rate_annealing:
+            self._lr_schedule = optax.linear_schedule(
+                init_value=cfg.learning_rate, end_value=0.0, transition_steps=total_steps
+            )
+        else:
+            self._lr_schedule = optax.constant_schedule(cfg.learning_rate)
+
+        self.optim = nnx.optimizer.Optimizer(
+            self,
+            optax.chain(
+                optax.clip_by_global_norm(0.5) if cfg.use_gradient_clipping else optax.identity(),
+                optax.adam(learning_rate=self._lr_schedule, eps=cfg.adam_epsilon, b1=cfg.adam_momentum),
+            ),
+            wrt=nnx.Param,
+        )
+
+    def get_learning_rate(self, step: int) -> jax.Array:
+        return self._lr_schedule(step)
 
     @nnx.jit
     def get_deterministic_action(self, obs: jax.Array) -> jax.Array:
@@ -86,13 +110,22 @@ class Agent(nnx.Module):
     def train_step(self, mb: Minibatch) -> dict[str, jax.Array]:
         def loss_fn(model: "Agent") -> tuple[jax.Array, dict[str, jax.Array]]:
             out = model.get_action_and_value(mb.obs, action=mb.actions)
+            mb_advantages = mb.advantages
 
-            # * Policy loss
             logratio = out.action_log_prob - mb.log_probs
             ratio = jnp.exp(logratio)
+            # approximate KL divergence to monitor the size of the policy update
+            # if the policy changes too drastically we may want to stop the update early
+            approx_kl = jnp.mean((ratio - 1) - logratio)
+            # how many examples were clipped?
+            clip_frac = jnp.mean(jnp.abs(ratio - 1) > self.cfg.ppo_epsilon)
 
-            pg_loss1 = -mb.advantages * ratio
-            pg_loss2 = -mb.advantages * jnp.clip(ratio, 1 - self.cfg.ppo_epsilon, 1 + self.cfg.ppo_epsilon)
+            if self.cfg.use_advantage_normalization:
+                mb_advantages = (mb_advantages - jnp.mean(mb_advantages)) / (jnp.std(mb_advantages) + 1e-8)
+
+            # * Policy loss
+            pg_loss1 = -mb_advantages * ratio
+            pg_loss2 = -mb_advantages * jnp.clip(ratio, 1 - self.cfg.ppo_epsilon, 1 + self.cfg.ppo_epsilon)
             pg_loss = jnp.mean(jnp.maximum(pg_loss1, pg_loss2))
 
             # * Value loss
@@ -106,6 +139,8 @@ class Agent(nnx.Module):
                 "policy_loss": pg_loss,
                 "value_loss": v_loss,
                 "entropy": entropy,
+                "approx_kl": approx_kl,
+                "clip_frac": clip_frac,
             }
 
         grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
@@ -125,23 +160,27 @@ class Agent(nnx.Module):
         TODO: add docstring
         """
         flat_segment = segment.flatten()
-        b_obs = flat_segment.obs  # (M * N, A, obs_dim)
-        b_advantages = advantages.reshape(b_obs.shape[0], -1)  # (M * N,)
-        b_returns = returns.reshape(b_obs.shape[0], -1)  # (M * N,)
+        batch_size = flat_segment.obs.shape[0]  # M * N
 
-        dataset_size = b_obs.shape[0]
+        b_obs = flat_segment.obs  # (M * N, A, obs_dim)
+        b_advantages = advantages.reshape(batch_size, -1)  # (M * N,)
+        b_returns = returns.reshape(batch_size, -1)  # (M * N,)
+        b_values = flat_segment.values.reshape(batch_size, -1)  # (M * N,)
+
         minibatch_size = self.cfg.minibatch_size
 
-        indices = jnp.arange(dataset_size)
-
+        indices = jnp.arange(batch_size)
         b_metrics = None
-        num_minibatches = dataset_size // minibatch_size
+        update_steps = 0  # to count number of update steps done
 
+        # TODO: use jax.lax.scan here for better performance
         for _ in range(self.cfg.update_epochs):
             key, subkey = jax.random.split(key)
             perm_indices = jax.random.permutation(subkey, indices)
 
-            for start in range(0, dataset_size, minibatch_size):
+            early_stop_triggered = False
+
+            for start in range(0, batch_size, minibatch_size):
                 end = start + minibatch_size
                 mb_indices = perm_indices[start:end]
 
@@ -155,11 +194,27 @@ class Agent(nnx.Module):
 
                 mb_metrics = self.train_step(mb)
 
+                if self.cfg.target_kl is not None and mb_metrics["approx_kl"] > 1.5 * self.cfg.target_kl:
+                    early_stop_triggered = True
+                    break
+
+                update_steps += 1
                 if b_metrics is None:
                     b_metrics = mb_metrics
                 else:
                     b_metrics = jax.tree_util.tree_map(jnp.add, b_metrics, mb_metrics)
 
-        avg_metrics = jax.tree_util.tree_map(lambda x: x / (num_minibatches * self.cfg.update_epochs), b_metrics)
+            if early_stop_triggered:
+                logger.warning("⚠️ Early stopping triggered due to large KL divergence.")
+                break
+
+        avg_metrics = jax.tree_util.tree_map(lambda x: x / update_steps, b_metrics)
+
+        # * R2: Explained variance for value function
+        # it tells us how well our value function is predicting the returns
+        y_pred, y_true = b_values, b_returns
+        var_y = jnp.var(y_true)
+        explained_var = jnp.where(var_y == 0, jnp.nan, 1 - jnp.var(y_true - y_pred) / var_y)
+        avg_metrics["explained_variance"] = explained_var
 
         return avg_metrics
