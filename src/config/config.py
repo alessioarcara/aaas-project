@@ -113,7 +113,7 @@ class Config(BaseModel):
             layouts=self.env_config.layouts,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
-            use_reward_shaping=self.env_config.use_reward_shaping,
+            shaping_mode=self.env_config.shaping_mode,
         )
 
     @property

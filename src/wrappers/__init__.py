@@ -1,3 +1,3 @@
-from src.wrappers.reward_shaping import OvercookedRewardShapingWrapper
+from src.wrappers.reward_shaping import OvercookedVectorRewardShapingWrapper
 
-__all__ = ["OvercookedRewardShapingWrapper"]
+__all__ = ["OvercookedVectorRewardShapingWrapper"]

@@ -4,7 +4,7 @@ from pydantic.validate_call_decorator import validate_call
 
 from src.overcooked_env import OvercookedGym
 from src.utils.typings import LayoutName, ShapingMode
-from src.wrappers import OvercookedRewardShapingWrapper
+from src.wrappers import OvercookedVectorRewardShapingWrapper
 
 
 @validate_call
@@ -13,28 +13,18 @@ def create_vector_env(
 ) -> VectorEnv:
     def make_env():
         def _thunk():
-            env = OvercookedGym(
-                layouts=layouts,
-                info_level=info_level,
-                horizon=horizon,
-                render_mode=None,
-            )
-            env = OvercookedRewardShapingWrapper(env, shaping_mode=shaping_mode)
+            env = OvercookedGym(layouts=layouts, info_level=info_level, horizon=horizon, render_mode=None)
             return env
 
         return _thunk
 
-    envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
-
+    envs = AsyncVectorEnv([make_env() for _ in range(num_envs)], context="forkserver")
+    envs = OvercookedVectorRewardShapingWrapper(envs, shaping_mode=shaping_mode)
     return envs
 
 
 def create_eval_env(layouts: list[LayoutName], info_level: int, horizon: int, video_folder: str) -> VectorEnv:
-    env = OvercookedGym(
-        layouts=layouts,
-        info_level=info_level,
-        horizon=horizon,
-    )
+    env = OvercookedGym(layouts=layouts, info_level=info_level, horizon=horizon, render_mode="rgb_array")
     env = RecordEpisodeStatistics(env)
     env = RecordVideo(
         env,
