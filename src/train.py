@@ -1,6 +1,6 @@
 import shutil
 
-import gymnasium
+import gymnasium as gym
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -12,14 +12,15 @@ import wandb
 from src.agent import Agent
 from src.config import Config
 from src.rollout import Carry, collect_rollouts, compute_gae
+from src.utils.constants import STATS_KEY
 from src.utils.misc import latest_video_path
 
 
-def eval_agent(agent: Agent, eval_env: gymnasium.Env):
+def eval_agent(agent: Agent, env: gym.Env) -> float:
     """
     Using the deterministic policy, evaluate the agent in the eval_env
     """
-    obs, _ = eval_env.reset()
+    obs, _ = env.reset()
 
     done = False
     while not done:
@@ -27,10 +28,10 @@ def eval_agent(agent: Agent, eval_env: gymnasium.Env):
         action = agent.get_deterministic_action(obs_jnp)
         action = np.array(action)
 
-        obs, _, terminated, truncated, info = eval_env.step(action)
+        obs, _, terminated, truncated, info = env.step(action)
         done = terminated or truncated
 
-    return info.get("episode", {}).get("r", 0.0)
+    return info.get(STATS_KEY, {}).get("r", 0.0)
 
 
 def train(cfg: Config):
@@ -47,7 +48,7 @@ def train(cfg: Config):
     key = jax.random.key(cfg.seed)
 
     train_envs = cfg.train_envs
-    eval_env = cfg.eval_env
+    eval_envs = cfg.eval_envs
 
     total_updates = cfg.training_config.total_updates
     batch_size = cfg.training_config.num_steps * cfg.env_config.num_envs
@@ -100,10 +101,11 @@ def train(cfg: Config):
             log_data["train/lr"] = agent.get_learning_rate(global_step).item()
 
             if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
-                log_data["eval/episode_reward"] = eval_agent(agent, eval_env)
+                for layout, env in eval_envs.items():
+                    log_data[f"eval/{layout}_return"] = eval_agent(agent, env)
 
-                if vid_path := latest_video_path(cfg.video_dir):
-                    log_data["eval/video"] = wandb.Video(str(vid_path), format="mp4")
+                    if vid_path := latest_video_path(cfg.video_dir / layout):
+                        log_data[f"eval/{layout}_video"] = wandb.Video(str(vid_path), format="mp4")
 
             wandb.log(log_data, step=global_step)
 
@@ -115,5 +117,6 @@ def train(cfg: Config):
 
     finally:
         train_envs.close()
-        eval_env.close()
+        for env in eval_envs.values():
+            env.close()
         wandb.finish()

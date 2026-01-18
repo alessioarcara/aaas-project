@@ -2,13 +2,14 @@ import sys
 from pathlib import Path
 from typing import Any, Optional, Self
 
+import gymnasium as gym
 from gymnasium.vector import VectorEnv
 from loguru import logger
 from pydantic import BaseModel, DirectoryPath, Field, ValidationError
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
-from src.env_factory import create_eval_env, create_train_envs
+from src.env_factory import create_eval_envs, create_train_envs
 from src.utils.io import read_yaml
 from src.utils.typings import LayoutName, ShapingMode
 
@@ -129,10 +130,10 @@ class Config(BaseModel):
         )
 
     @property
-    def eval_env(self) -> VectorEnv:
-        return create_eval_env(
+    def eval_envs(self) -> dict[LayoutName, gym.Env]:
+        return create_eval_envs(
             layouts=self.env_config.layouts,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
-            video_folder=str(self.video_dir),
+            video_dir=self.video_dir,
         )

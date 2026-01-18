@@ -1,23 +1,27 @@
 seed: 42
-exp_name: "my_experiment"
-wandb_project_name: "aaas_project"
-wandb_entity: "aarcara"
-video_dir: "./videos"
+exp_name: my_experiment
+wandb_project_name: aaas_project
+wandb_entity: aarcara
+video_dir: ./videos
 video_interval: 1000
 env_config:
   num_envs: 128
   layouts:
-    - "cramped_room"
+    - cramped_room
+    - asymmetric_advantages
+    - counter_circuit
+    - forced_coordination
+    - coordination_ring
   info_level: 0
   horizon: 400
-  shaping_mode: "shared"
+  shaping_mode: shared
 training_config:
   num_steps: 400
-  total_updates: 10_000_000
+  total_updates: 5_000_000
   gae_lambda: 0.90
   gae_gamma: 0.99
-  update_epochs: 4
-  minibatch_size: 4096
+  update_epochs: 10
+  minibatch_size: 4096 
   learning_rate: 2.5e-4
   value_coef: 0.5
   entropy_coef: 0.1
