@@ -17,8 +17,7 @@ def create_train_envs(
 
     def make_env():
         def _thunk():
-            # ! fixed env for now
-            env = OvercookedGym(layouts=["cramped_room"], info_level=info_level, horizon=horizon, render_mode=None)
+            env = OvercookedGym(layouts=layouts, info_level=info_level, horizon=horizon, render_mode=None)
             return env
 
         return _thunk

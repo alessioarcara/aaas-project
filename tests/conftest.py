@@ -1,6 +1,6 @@
 import pytest
 
-from src.env_factory import create_vector_env
+from src.env_factory import create_train_envs
 from tests.constants import NUM_ENVS
 
 
@@ -16,7 +16,7 @@ def fake_policy():
 
 @pytest.fixture
 def vector_env():
-    envs = create_vector_env(
+    envs = create_train_envs(
         num_envs=NUM_ENVS,
         layouts=["cramped_room"],
         info_level=1,

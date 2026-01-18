@@ -35,8 +35,8 @@ def eval_agent(agent: Agent, eval_envs: gym.vector.VectorEnv) -> list[float]:
 
         done = np.logical_or(done, np.logical_or(terminated, truncated))
 
-    episode_rewards_per_env = info.get(STATS_KEY, {}).get("r", 0.0)
-    return episode_rewards_per_env
+    reward_per_layout = info.get(STATS_KEY, {}).get("r", 0.0)
+    return reward_per_layout
 
 
 def train(cfg: Config):
@@ -107,10 +107,10 @@ def train(cfg: Config):
             log_data["train/lr"] = agent.get_learning_rate(global_step).item()
 
             if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
-                layouts_rewards = eval_agent(agent, eval_envs)
+                rewards_per_layout = eval_agent(agent, eval_envs)
 
                 for i, layout in enumerate(cfg.env_config.layouts):
-                    log_data[f"eval/{layout}_reward"] = layouts_rewards[i]
+                    log_data[f"eval/{layout}_reward"] = rewards_per_layout[i]
 
                     if vid_path := latest_video_path(cfg.video_dir / layout):
                         log_data[f"eval/{layout}_video"] = wandb.Video(str(vid_path), format="mp4")
