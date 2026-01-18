@@ -5,7 +5,7 @@ wandb_entity: aarcara
 video_dir: ./videos
 video_interval: 1000
 env_config:
-  num_envs: 128
+  num_envs: 64
   layouts:
     - cramped_room
     - asymmetric_advantages

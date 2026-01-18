@@ -16,22 +16,27 @@ from src.utils.constants import STATS_KEY
 from src.utils.misc import latest_video_path
 
 
-def eval_agent(agent: Agent, env: gym.Env) -> float:
+def eval_agent(agent: Agent, eval_envs: gym.vector.VectorEnv) -> list[float]:
     """
-    Using the deterministic policy, evaluate the agent in the eval_env
+    Evaluate the agent on all Overcooked layouts.
+    Returns an episode reward for each layout.
     """
-    obs, _ = env.reset()
+    obs, _ = eval_envs.reset()
+    num_envs = eval_envs.num_envs
 
-    done = False
-    while not done:
+    done = np.zeros(num_envs, dtype=bool)
+
+    while not np.all(done):
         obs_jnp = jax.device_put(obs)
-        action = agent.get_deterministic_action(obs_jnp)
-        action = np.array(action)
+        actions = agent.get_deterministic_action(obs_jnp)
 
-        obs, _, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
+        actions = np.array(actions)
+        obs, _, terminated, truncated, info = eval_envs.step(actions)
 
-    return info.get(STATS_KEY, {}).get("r", 0.0)
+        done = np.logical_or(done, np.logical_or(terminated, truncated))
+
+    episode_rewards_per_env = info.get(STATS_KEY, {}).get("r", 0.0)
+    return episode_rewards_per_env
 
 
 def train(cfg: Config):
@@ -39,6 +44,7 @@ def train(cfg: Config):
     1. Collect rollouts
     2. Compute GAE advantages and returns
     3. Update agent using collected data
+    4. Evaluate agent periodically
     """
     video_dir = cfg.video_dir
     if video_dir.exists():
@@ -79,6 +85,8 @@ def train(cfg: Config):
         )
 
         for update in tqdm(range(1, num_updates + 1), desc="Training", unit="update", colour="blue"):
+            global_step = update * batch_size
+
             segment, carry = collect_rollouts(
                 train_envs,
                 agent,
@@ -95,14 +103,14 @@ def train(cfg: Config):
             key, learn_key = jax.random.split(key)
             metrics = agent.learn_from(segment, advantages, returns, learn_key)
 
-            global_step = update * batch_size
-
             log_data = {f"train/{k}": v.item() for k, v in metrics.items()}
             log_data["train/lr"] = agent.get_learning_rate(global_step).item()
 
             if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
-                for layout, env in eval_envs.items():
-                    log_data[f"eval/{layout}_return"] = eval_agent(agent, env)
+                layouts_rewards = eval_agent(agent, eval_envs)
+
+                for i, layout in enumerate(cfg.env_config.layouts):
+                    log_data[f"eval/{layout}_reward"] = layouts_rewards[i]
 
                     if vid_path := latest_video_path(cfg.video_dir / layout):
                         log_data[f"eval/{layout}_video"] = wandb.Video(str(vid_path), format="mp4")
@@ -114,9 +122,7 @@ def train(cfg: Config):
     except Exception as e:
         logger.exception("❌ Unhandled exception during training: {}", e)
         raise e
-
     finally:
         train_envs.close()
-        for env in eval_envs.values():
-            env.close()
+        eval_envs.close()
         wandb.finish()
