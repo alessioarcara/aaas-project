@@ -1,5 +1,9 @@
+import numpy as np
 import pytest
 from overcooked_ai_py.mdp.overcooked_env import Overcooked, OvercookedEnv, OvercookedGridworld
+
+from src.overcooked_env import OvercookedGym
+from src.utils.typings import EncodingType
 
 
 @pytest.fixture
@@ -58,3 +62,33 @@ def test_lossless_state_encoding_shape(env_setup):
     # Channels = 26 (features per tile)
     expected_shape = (5, 4, 26)
     assert grid_encoding[0].shape == expected_shape
+
+
+def test_overcooked_env_featurized():
+    env = OvercookedGym(
+        layouts=["cramped_room"],
+        encoding=EncodingType.FEATURIZED,
+    )
+
+    obs, info = env.reset()
+
+    expected_shape = (96,)
+    assert obs[0].shape == expected_shape
+    assert obs[1].shape == expected_shape
+
+    assert not np.array_equal(obs[0], obs[1])
+
+
+def test_overcooked_env_lossless():
+    env = OvercookedGym(
+        layouts=["cramped_room"],
+        encoding=EncodingType.LOSSLESS,
+    )
+
+    obs, info = env.reset()
+
+    expected_shape = (5, 4, 26)
+    assert obs[0].shape == expected_shape
+    assert obs[1].shape == expected_shape
+
+    assert not np.array_equal(obs[0], obs[1])

@@ -1,15 +1,16 @@
+import copy
 from typing import Any, Dict, Optional, Tuple
 
+import cv2
 import gymnasium as gym
 import numpy as np
+import pygame
 from gymnasium import spaces
-from overcooked_ai_py.mdp.overcooked_env import (
-    Overcooked,
-    OvercookedEnv,
-)
-from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
+from overcooked_ai_py.mdp.overcooked_env import Action, OvercookedEnv
+from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld, OvercookedState
+from overcooked_ai_py.visualization.state_visualizer import StateVisualizer
 
-from src.utils.typings import LayoutName, OvercookedAction, OvercookedObs
+from src.utils.typings import EncodingType, LayoutName, OvercookedAction, OvercookedObs
 
 
 class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
@@ -18,6 +19,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
     def __init__(
         self,
         layouts: list[LayoutName],
+        encoding: EncodingType,
         info_level: int = 0,
         horizon: int = 400,
         render_mode: str = "rgb_array",
@@ -25,43 +27,68 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         """
         Args:
             layouts: A list of layout names (strings) to choose from.
+            encoding: The type of state encoding to use.
             info_level: The verbosity level of the Overcooked environment.
             horizon: The max number of steps per episode.
             render_mode: The render mode, currently only "rgb_array" is supported.
         """
-        self.render_mode = render_mode
         self.layouts = layouts
-        self._envs = []
+        self.encoding = encoding
+        self.render_mode = render_mode
+        self._envs: list[OvercookedEnv] = []
 
         for layout in layouts:
             mdp = OvercookedGridworld.from_layout_name(layout)
-            base_env = OvercookedEnv.from_mdp(mdp, info_level=info_level, horizon=horizon)
-            env = Overcooked(base_env=base_env, featurize_fn=base_env.featurize_state_mdp)
+            env = OvercookedEnv.from_mdp(mdp, info_level=info_level, horizon=horizon)
             self._envs.append(env)
 
-        self._cur = self._envs[0]
-        dummy = self._cur.reset()
+        self._active_env = self._envs[0]
+        self.agent_idx = 0
 
-        ref_obs = dummy["both_agent_obs"]
-        self.num_agents = len(ref_obs)
-        obs_shape = ref_obs[0].shape
+        ############ Definition of action space ###################
+        # North, South, East, West, Stay, Interact -> 6 actions
+        self.action_space = spaces.Discrete(len(Action.ALL_ACTIONS))
+        ###########################################################
 
+        ############ Definition of observation space ##############
+        dummy_mdp: OvercookedGridworld = self._active_env.mdp
+        dummy_state = dummy_mdp.get_standard_start_state()
+
+        # Motion Level Action Manager used to featurize the state
+        dummy_mlam = self._active_env.mlam
+
+        if self.encoding == EncodingType.FEATURIZED:
+            obs = dummy_mdp.featurize_state(dummy_state, dummy_mlam)[0]
+            low = -np.inf
+            high = np.inf
+
+        elif self.encoding == EncodingType.LOSSLESS:
+            obs = dummy_mdp.lossless_state_encoding(dummy_state)[0]
+            low = 0.0
+            high = np.inf
+
+        else:
+            raise ValueError(f"Unsupported encoding type: {self.encoding}")
+
+        # The observation space is a tuple of two agent observations
         self.observation_space = spaces.Tuple(
-            tuple(
-                spaces.Box(
-                    low=-np.inf,
-                    high=np.inf,
-                    shape=obs_shape,
-                    dtype=np.float32,
-                )
-                for _ in range(self.num_agents)
-            )
+            tuple(spaces.Box(low=low, high=high, shape=obs.shape, dtype=np.float32) for _ in range(2))
         )
-        self.action_space = self._envs[0].action_space
+        ############################################################
+        self.visualizer = StateVisualizer()
 
-    @property
-    def current_env(self) -> Overcooked:
-        return self._cur
+    def _encode_obs_and_swap(self, state: OvercookedState, env: OvercookedEnv) -> OvercookedObs:
+        mdp = env.mdp
+
+        if self.encoding == EncodingType.FEATURIZED:
+            obs_p1, obs_p2 = mdp.featurize_state(state, env.mlam)
+        else:
+            obs_p1, obs_p2 = mdp.lossless_state_encoding(state)
+
+        if self.agent_idx == 0:
+            return (obs_p1, obs_p2)
+        else:
+            return (obs_p2, obs_p1)
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
@@ -76,13 +103,14 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         super().reset(seed=seed)
 
         idx = self.np_random.integers(0, len(self._envs))
-        self._cur = self._envs[idx]
+        self._active_env = self._envs[idx]
 
-        raw_obs = self._cur.reset()
+        self.agent_idx = self.np_random.integers(0, 2)
 
-        obs = tuple(raw_obs["both_agent_obs"])
+        self._active_env.reset()
+        obs = self._encode_obs_and_swap(self._active_env.state, self._active_env)
 
-        info = {"layout_name": self.layouts[idx]}
+        info = {"layout_name": self.layouts[idx], "agent_idx": self.agent_idx}
         return obs, info
 
     def step(self, action: OvercookedAction) -> Tuple[OvercookedObs, float, bool, bool, Dict[str, Any]]:
@@ -95,8 +123,16 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         Returns:
             A tuple containing (obs, reward, terminated, truncated, info).
         """
-        raw_obs, reward, done, info = self._cur.step(action)
-        obs = tuple(raw_obs["both_agent_obs"])
+        action_p1, action_p2 = action
+
+        if self.agent_idx == 0:
+            joint_action = (action_p1, action_p2)
+        else:
+            joint_action = (action_p2, action_p1)
+
+        state, reward, done, info = self._active_env.step(joint_action)
+
+        obs = self._encode_obs_and_swap(state, self._active_env)
 
         terminated = False
         truncated = bool(done)
@@ -109,7 +145,27 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
             A NumPy array of shape (height, width, 3) representing the RGB image of the current state.
         """
         if self.render_mode == "rgb_array":
-            return self._cur.render()
+            rewards_dict = {}  # dictionary of details you want rendered in the UI
+            for key, value in self.base_env.game_stats.items():
+                if key in [
+                    "cumulative_shaped_rewards_by_agent",
+                    "cumulative_sparse_rewards_by_agent",
+                ]:
+                    rewards_dict[key] = value
+
+            image = self.visualizer.render_state(
+                state=self.base_env.state,
+                grid=self.base_env.mdp.terrain_mtx,
+                hud_data=StateVisualizer.default_hud_data(self.base_env.state, **rewards_dict),
+            )
+
+            buffer = pygame.surfarray.array3d(image)
+            image = copy.deepcopy(buffer)
+            image = np.flip(np.rot90(image, 3), 1)
+            image = cv2.resize(image, (2 * 528, 2 * 464))
+
+            return image
+
         return None
 
     def close(self) -> None:

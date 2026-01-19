@@ -174,6 +174,7 @@ class Agent(nnx.Module):
         update_steps = 0  # to count number of update steps done
 
         # TODO: use jax.lax.scan here for better performance
+        # for now, keep it simple and for loop let me to use early stopping
         for _ in range(self.cfg.update_epochs):
             key, subkey = jax.random.split(key)
             perm_indices = jax.random.permutation(subkey, indices)

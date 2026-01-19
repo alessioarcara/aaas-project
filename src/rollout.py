@@ -124,7 +124,7 @@ def compute_gae(segment: TrajectorySegment, gamma: float, lam: float) -> tuple[j
         next_val, next_adv = carry
         reward, done, value = step_data
 
-        non_terminal = 1.0
+        non_terminal = 1.0 - done
 
         delta = reward + gamma * next_val * non_terminal - value
         adv = delta + gamma * lam * non_terminal * next_adv
