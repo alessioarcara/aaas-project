@@ -123,7 +123,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         Returns:
             A tuple containing (obs, reward, terminated, truncated, info).
         """
-        action_p1, action_p2 = action
+        action_p1, action_p2 = [Action.INDEX_TO_ACTION[a] for a in action]
 
         if self.agent_idx == 0:
             joint_action = (action_p1, action_p2)
@@ -146,7 +146,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         """
         if self.render_mode == "rgb_array":
             rewards_dict = {}  # dictionary of details you want rendered in the UI
-            for key, value in self.base_env.game_stats.items():
+            for key, value in self._active_env.game_stats.items():
                 if key in [
                     "cumulative_shaped_rewards_by_agent",
                     "cumulative_sparse_rewards_by_agent",
@@ -154,9 +154,9 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
                     rewards_dict[key] = value
 
             image = self.visualizer.render_state(
-                state=self.base_env.state,
-                grid=self.base_env.mdp.terrain_mtx,
-                hud_data=StateVisualizer.default_hud_data(self.base_env.state, **rewards_dict),
+                state=self._active_env.state,
+                grid=self._active_env.mdp.terrain_mtx,
+                hud_data=StateVisualizer.default_hud_data(self._active_env.state, **rewards_dict),
             )
 
             buffer = pygame.surfarray.array3d(image)

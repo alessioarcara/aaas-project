@@ -5,19 +5,26 @@ from pydantic.validate_call_decorator import validate_call
 
 from src.overcooked_env import OvercookedGym
 from src.utils.constants import STATS_KEY
-from src.utils.typings import LayoutName, ShapingMode
+from src.utils.typings import EncodingType, LayoutName, ShapingMode
 from src.wrappers import OvercookedVectorRewardShapingWrapper, StackAgentObservationWrapper
 
 
 @validate_call
 def create_train_envs(
-    num_envs: int, layouts: list[LayoutName], info_level: int, horizon: int, shaping_mode: ShapingMode
+    num_envs: int,
+    layouts: list[LayoutName],
+    encoding: EncodingType,
+    info_level: int,
+    horizon: int,
+    shaping_mode: ShapingMode,
 ) -> gym.vector.VectorEnv:
     """ """
 
     def make_env():
         def _thunk():
-            env = OvercookedGym(layouts=layouts, info_level=info_level, horizon=horizon, render_mode=None)
+            env = OvercookedGym(
+                layouts=layouts, encoding=encoding, info_level=info_level, horizon=horizon, render_mode=None
+            )
             env = StackAgentObservationWrapper(env)
             return env
 
@@ -29,12 +36,16 @@ def create_train_envs(
 
 
 @validate_call
-def create_eval_envs(layouts: list[LayoutName], info_level: int, horizon: int, video_dir: Path) -> gym.vector.VectorEnv:
+def create_eval_envs(
+    layouts: list[LayoutName], encoding: EncodingType, info_level: int, horizon: int, video_dir: Path
+) -> gym.vector.VectorEnv:
     """ """
 
     def make_env(layout: LayoutName):
         def _thunk():
-            env = OvercookedGym(layouts=[layout], info_level=info_level, horizon=horizon, render_mode="rgb_array")
+            env = OvercookedGym(
+                layouts=[layout], encoding=encoding, info_level=info_level, horizon=horizon, render_mode="rgb_array"
+            )
             env = StackAgentObservationWrapper(env)
             env = gym.wrappers.RecordVideo(env, video_folder=video_dir / layout, episode_trigger=lambda e: True)
             return env

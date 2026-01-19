@@ -11,7 +11,7 @@ from pydantic.types import PositiveInt
 from src.config.utils import _deep_merge
 from src.env_factory import create_eval_envs, create_train_envs
 from src.utils.io import read_yaml
-from src.utils.typings import LayoutName, ShapingMode
+from src.utils.typings import EncodingType, LayoutName, ShapingMode
 
 
 class TrainingConfig(BaseModel):
@@ -56,6 +56,10 @@ class EnvironmentConfig(BaseModel):
         default=["cramped_room"],
         min_length=1,
         description="List of Overcooked layouts to use for training (must contain at least one).",
+    )
+    encoding: EncodingType = Field(
+        default=EncodingType.FEATURIZED,
+        description="The observation format. Use 'LOSSLESS' for spatial grid tensors (suitable for CNNs) or 'FEATURIZED' for 1D vectors of hand-crafted features (suitable for MLPs).",
     )
     info_level: int = Field(1, description="Information level for the environment logging/observation.")
     horizon: PositiveInt = Field(400, description="Time horizon (max steps) for each episode.")
@@ -124,6 +128,7 @@ class Config(BaseModel):
         return create_train_envs(
             num_envs=self.env_config.num_envs,
             layouts=self.env_config.layouts,
+            encoding=self.env_config.encoding,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
             shaping_mode=self.env_config.shaping_mode,
@@ -133,6 +138,7 @@ class Config(BaseModel):
     def eval_envs(self) -> dict[LayoutName, gym.Env]:
         return create_eval_envs(
             layouts=self.env_config.layouts,
+            encoding=self.env_config.encoding,
             info_level=self.env_config.info_level,
             horizon=self.env_config.horizon,
             video_dir=self.video_dir,
