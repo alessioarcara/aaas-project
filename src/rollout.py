@@ -84,7 +84,7 @@ def collect_rollouts(envs: VectorEnv, agent: Agent, num_steps: int, carry: Carry
         done = np.logical_or(terminated, truncated)
 
         # ! HACK: (n_envs) -> (n_envs, n_agents)
-        done_broadcast = np.repeat(done[:, np.newaxis], n_agents, axis=1)
+        done_broadcast = done[:, np.newaxis]
 
         rewards[step] = reward
         dones[step] = done_broadcast
@@ -124,7 +124,7 @@ def compute_gae(segment: TrajectorySegment, gamma: float, lam: float) -> tuple[j
         next_val, next_adv = carry
         reward, done, value = step_data
 
-        non_terminal = 1.0 - done
+        non_terminal = 1.0
 
         delta = reward + gamma * next_val * non_terminal - value
         adv = delta + gamma * lam * non_terminal * next_adv
@@ -135,15 +135,14 @@ def compute_gae(segment: TrajectorySegment, gamma: float, lam: float) -> tuple[j
     # using lax.scan inside @jax.jit it avoids unrolling the loop
     # just like a for loop would do, but it's more efficient
     scan_inputs = (
-        segment.rewards[::-1],
-        segment.dones[::-1],
-        segment.values[::-1],
+        segment.rewards,
+        segment.dones,
+        segment.values,
     )
     init_carry = (segment.last_value, jnp.zeros_like(segment.last_value))
 
-    _, advantages_rev = jax.lax.scan(gae_step, init_carry, scan_inputs)
+    _, advantages = jax.lax.scan(gae_step, init_carry, scan_inputs, reverse=True)
 
-    advantages = advantages_rev[::-1]
     returns = advantages + segment.values
 
     return advantages, returns

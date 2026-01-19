@@ -40,33 +40,28 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
             self._envs.append(env)
 
         self._cur = self._envs[0]
-        dummy_raw = self._cur.reset()
+        dummy = self._cur.reset()
 
-        # TODO:: with more layouts we cannot take shape from first obs
-        # since in the reset we randomly pick a new layout and obs shape may differ
-        # we will take the max shape
-        dummy_obs_stack = np.stack(dummy_raw["both_agent_obs"])
+        ref_obs = dummy["both_agent_obs"]
+        self.num_agents = len(ref_obs)
+        obs_shape = ref_obs[0].shape
 
-        self.n_agents = dummy_obs_stack.shape[0]
-
-        self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=dummy_obs_stack.shape,
-            dtype=np.float32,
+        self.observation_space = spaces.Tuple(
+            tuple(
+                spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=obs_shape,
+                    dtype=np.float32,
+                )
+                for _ in range(self.num_agents)
+            )
         )
-
         self.action_space = self._envs[0].action_space
 
     @property
     def current_env(self) -> Overcooked:
         return self._cur
-
-    def _process_obs(self, raw_obs: Dict[str, Any]) -> OvercookedObs:
-        """
-        Process the raw observation from the Overcooked environment into the desired format.
-        """
-        return np.stack(raw_obs["both_agent_obs"]).astype(np.float32)
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
@@ -84,12 +79,13 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         self._cur = self._envs[idx]
 
         raw_obs = self._cur.reset()
-        obs = self._process_obs(raw_obs)
+
+        obs = tuple(raw_obs["both_agent_obs"])
 
         info = {"layout_name": self.layouts[idx]}
         return obs, info
 
-    def step(self, action: OvercookedAction) -> Tuple[OvercookedObs, np.ndarray, bool, bool, Dict[str, Any]]:
+    def step(self, action: OvercookedAction) -> Tuple[OvercookedObs, float, bool, bool, Dict[str, Any]]:
         """
         Execute one step within the environment.
 
@@ -100,14 +96,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
             A tuple containing (obs, reward, terminated, truncated, info).
         """
         raw_obs, reward, done, info = self._cur.step(action)
-        obs = self._process_obs(raw_obs)
-
-        # HACK: Gymnasium `RecordEpisodeStatistics` wrapper attempts to write
-        # to the 'episode' key in 'info' when an episode ends.
-        # Overcooked env uses this key for its own purposes, so we rename it here
-        # to avoid conflicts when using the wrapper
-        if "episode" in info:
-            info["overcooked_episode"] = info.pop("episode")
+        obs = tuple(raw_obs["both_agent_obs"])
 
         terminated = False
         truncated = bool(done)
