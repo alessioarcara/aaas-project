@@ -13,7 +13,8 @@ from src.agent import Agent
 from src.config import Config
 from src.rollout import Carry, collect_rollouts, compute_gae
 from src.utils.constants import STATS_KEY
-from src.utils.misc import latest_video_path
+
+# from src.utils.misc import latest_video_path
 
 
 def eval_agent(agent: Agent, eval_envs: gym.vector.VectorEnv) -> list[float]:
@@ -54,7 +55,7 @@ def train(cfg: Config):
     key = jax.random.key(cfg.seed)
 
     train_envs = cfg.train_envs
-    eval_envs = cfg.eval_envs
+    # eval_envs = cfg.eval_envs
 
     total_updates = cfg.training_config.total_updates
     batch_size = cfg.training_config.num_steps * cfg.env_config.num_envs
@@ -106,16 +107,16 @@ def train(cfg: Config):
             log_data = {f"train/{k}": v.item() for k, v in metrics.items()}
             log_data["train/lr"] = agent.get_learning_rate(global_step).item()
 
-            if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
-                rewards_per_layout = eval_agent(agent, eval_envs)
+            # if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
+            #     rewards_per_layout = eval_agent(agent, eval_envs)
 
-                for i, layout in enumerate(cfg.env_config.layouts):
-                    log_data[f"eval/{layout}_reward"] = rewards_per_layout[i]
+            #     for i, layout in enumerate(cfg.env_config.layouts):
+            #         log_data[f"eval/{layout}_reward"] = rewards_per_layout[i]
 
-                    if vid_path := latest_video_path(cfg.video_dir / layout):
-                        log_data[f"eval/{layout}_video"] = wandb.Video(str(vid_path), format="mp4")
+            #         if vid_path := latest_video_path(cfg.video_dir / layout):
+            #             log_data[f"eval/{layout}_video"] = wandb.Video(str(vid_path), format="mp4")
 
-            wandb.log(log_data, step=global_step)
+            # wandb.log(log_data, step=global_step)
 
     except KeyboardInterrupt:
         logger.warning("⚠️ Training interrupted by user.")
@@ -124,5 +125,5 @@ def train(cfg: Config):
         raise e
     finally:
         train_envs.close()
-        eval_envs.close()
+        # eval_envs.close()
         wandb.finish()

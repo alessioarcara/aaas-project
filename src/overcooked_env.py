@@ -23,6 +23,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         info_level: int = 0,
         horizon: int = 400,
         render_mode: str = "rgb_array",
+        grid_shape: Optional[Tuple[int, int]] = None,
     ) -> None:
         """
         Args:
@@ -37,10 +38,20 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         self.render_mode = render_mode
         self._envs: list[OvercookedEnv] = []
 
+        self.max_height = 0
+        self.max_width = 0
+
         for layout in layouts:
             mdp = OvercookedGridworld.from_layout_name(layout)
             env = OvercookedEnv.from_mdp(mdp, info_level=info_level, horizon=horizon)
             self._envs.append(env)
+
+            h, w = np.array(mdp.terrain_mtx).shape
+            self.max_height = max(self.max_height, h)
+            self.max_width = max(self.max_width, w)
+
+        if grid_shape is not None:
+            self.max_height, self.max_width = grid_shape
 
         self._active_env = self._envs[0]
         self.agent_idx = 0
@@ -58,24 +69,52 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         dummy_mlam = self._active_env.mlam
 
         if self.encoding == EncodingType.FEATURIZED:
-            obs = dummy_mdp.featurize_state(dummy_state, dummy_mlam)[0]
+            raw_obs = dummy_mdp.featurize_state(dummy_state, dummy_mlam)[0]
             low = -np.inf
             high = np.inf
 
         elif self.encoding == EncodingType.LOSSLESS:
-            obs = dummy_mdp.lossless_state_encoding(dummy_state)[0]
+            raw_obs = dummy_mdp.lossless_state_encoding(dummy_state)[0]
             low = 0.0
             high = np.inf
 
         else:
             raise ValueError(f"Unsupported encoding type: {self.encoding}")
 
+        # if we are using grid encoding, different layouts can have different sizes,
+        # we need to pad the observations. Thus, we set the observation space to the max height and max width
+        if len(raw_obs.shape) == 3:
+            target_shape = (self.max_height, self.max_width, raw_obs.shape[2])
+        else:
+            # in featurized encoding, the observation doesn't change with different layouts
+            # it depends on the number of pots (which is always 2 in our experiments)
+            # and number of players (Fixed to 2)
+            target_shape = raw_obs.shape
+
         # The observation space is a tuple of two agent observations
         self.observation_space = spaces.Tuple(
-            tuple(spaces.Box(low=low, high=high, shape=obs.shape, dtype=np.float32) for _ in range(2))
+            tuple(spaces.Box(low=low, high=high, shape=target_shape, dtype=np.float32) for _ in range(2))
         )
         ############################################################
         self.visualizer = StateVisualizer()
+
+    def _pad_obs(self, obs: np.ndarray) -> np.ndarray:
+        """
+        Bottom-right pad the observation to the target shape.
+        """
+        if len(obs.shape) != 3:
+            return obs
+
+        h, w, _ = obs.shape
+
+        pad_h = self.max_height - h
+        pad_w = self.max_width - w
+
+        if pad_h == 0 and pad_w == 0:
+            return obs
+
+        padded_obs = np.pad(obs, ((0, pad_h), (0, pad_w), (0, 0)), mode="constant", constant_values=0)
+        return padded_obs
 
     def _encode_obs_and_swap(self, state: OvercookedState, env: OvercookedEnv) -> OvercookedObs:
         mdp = env.mdp
@@ -84,6 +123,8 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
             obs_p1, obs_p2 = mdp.featurize_state(state, env.mlam)
         else:
             obs_p1, obs_p2 = mdp.lossless_state_encoding(state)
+            obs_p1, obs_p2 = obs_p1.transpose(1, 0, 2), obs_p2.transpose(1, 0, 2)
+            obs_p1, obs_p2 = self._pad_obs(obs_p1), self._pad_obs(obs_p2)
 
         if self.agent_idx == 0:
             return (obs_p1, obs_p2)

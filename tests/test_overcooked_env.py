@@ -85,10 +85,23 @@ def test_overcooked_env_lossless():
         encoding=EncodingType.LOSSLESS,
     )
 
-    obs, info = env.reset()
+    obs, _ = env.reset()
 
     expected_shape = (5, 4, 26)
     assert obs[0].shape == expected_shape
     assert obs[1].shape == expected_shape
 
     assert not np.array_equal(obs[0], obs[1])
+
+
+def test_overcooked_env_lossless_different_layouts():
+    env = OvercookedGym(
+        layouts=["cramped_room", "asymmetric_advantages"],
+        encoding=EncodingType.LOSSLESS,
+    )
+
+    obs, _ = env.reset()
+
+    expected_shape = (5, 9, 26)  # Max dimensions across both layouts
+    assert obs[0].shape == expected_shape
+    assert obs[1].shape == expected_shape

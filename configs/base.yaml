@@ -8,10 +8,11 @@ env_config:
   num_envs: 15
   layouts:
     - cramped_room
+    - asymmetric_advantages
   info_level: 0
   encoding: lossless 
   horizon: 400
-  shaping_mode: shared
+  shaping_mode: shared 
 training_config:
   num_steps: 400
   total_updates: 5_000_000
