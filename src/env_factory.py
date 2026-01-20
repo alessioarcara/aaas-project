@@ -1,35 +1,92 @@
-from gymnasium.vector import AsyncVectorEnv, VectorEnv
-from gymnasium.wrappers import RecordEpisodeStatistics, RecordVideo
-from pydantic.validate_call_decorator import validate_call
+import functools
+from pathlib import Path
+
+import gymnasium as gym
+import numpy as np
+from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
+from pydantic import validate_call
 
 from src.overcooked_env import OvercookedGym
-from src.utils.typings import LayoutName, ShapingMode
-from src.wrappers import OvercookedVectorRewardShapingWrapper
+from src.utils.constants import STATS_KEY
+from src.utils.typings import EncodingType, LayoutName, ShapingMode
+from src.wrappers import OvercookedVectorRewardShapingWrapper, StackAgentObservationWrapper
+
+
+def _make_train_env(layouts, encoding, info_level, horizon):
+    env = OvercookedGym(
+        layouts=layouts,
+        encoding=encoding,
+        info_level=info_level,
+        horizon=horizon,
+        render_mode=None,
+    )
+    env = StackAgentObservationWrapper(env)
+    return env
+
+
+def _make_eval_env(layout, encoding, info_level, horizon, grid_shape, video_path):
+    env = OvercookedGym(
+        layouts=[layout],
+        encoding=encoding,
+        info_level=info_level,
+        horizon=horizon,
+        render_mode="rgb_array",
+        grid_shape=grid_shape,
+    )
+    env = StackAgentObservationWrapper(env)
+    env = gym.wrappers.RecordVideo(env, video_folder=str(video_path), episode_trigger=lambda e: True)
+    return env
 
 
 @validate_call
 def create_train_envs(
-    num_envs: int, layouts: list[LayoutName], info_level: int, horizon: int, shaping_mode: ShapingMode
-) -> VectorEnv:
-    def make_env():
-        def _thunk():
-            env = OvercookedGym(layouts=layouts, info_level=info_level, horizon=horizon, render_mode=None)
-            return env
+    num_envs: int,
+    layouts: list[LayoutName],
+    encoding: EncodingType,
+    info_level: int,
+    horizon: int,
+    shaping_mode: ShapingMode,
+) -> gym.vector.VectorEnv:
+    make_env_fn = functools.partial(
+        _make_train_env, layouts=layouts, encoding=encoding, info_level=info_level, horizon=horizon
+    )
 
-        return _thunk
+    env_fns = [make_env_fn for _ in range(num_envs)]
 
-    envs = AsyncVectorEnv([make_env() for _ in range(num_envs)], context="forkserver")
+    envs = gym.vector.AsyncVectorEnv(env_fns, context="forkserver")
     envs = OvercookedVectorRewardShapingWrapper(envs, shaping_mode=shaping_mode)
     return envs
 
 
 @validate_call
-def create_eval_env(layouts: list[LayoutName], info_level: int, horizon: int, video_folder: str) -> VectorEnv:
-    env = OvercookedGym(layouts=layouts, info_level=info_level, horizon=horizon, render_mode="rgb_array")
-    env = RecordEpisodeStatistics(env)
-    env = RecordVideo(
-        env,
-        video_folder=video_folder,
-        episode_trigger=lambda x: True,
-    )
-    return env
+def create_eval_envs(
+    layouts: list[LayoutName], encoding: EncodingType, info_level: int, horizon: int, video_dir: Path
+) -> gym.vector.VectorEnv:
+    # Determine common grid shape for all layouts
+    # to use as padding size
+    max_h, max_w = 0, 0
+    for layout in layouts:
+        mdp = OvercookedGridworld.from_layout_name(layout)
+        h, w = np.array(mdp.terrain_mtx).shape
+        max_h = max(max_h, h)
+        max_w = max(max_w, w)
+    common_shape = (max_h, max_w)
+
+    env_fns = []
+    for layout in layouts:
+        video_sub_dir = video_dir / layout
+
+        make_env_fn = functools.partial(
+            _make_eval_env,
+            layout=layout,
+            encoding=encoding,
+            info_level=info_level,
+            horizon=horizon,
+            grid_shape=common_shape,
+            video_path=video_sub_dir,
+        )
+        env_fns.append(make_env_fn)
+
+    envs = gym.vector.AsyncVectorEnv(env_fns, context="forkserver")
+    envs = gym.wrappers.vector.RecordEpisodeStatistics(envs, stats_key=STATS_KEY)
+    return envs

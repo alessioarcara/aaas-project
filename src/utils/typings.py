@@ -22,3 +22,8 @@ class ShapingMode(StrEnum):
     INDIVIDUAL = "individual"
     SHARED = "shared"
     NONE = "none"
+
+
+class EncodingType(StrEnum):
+    LOSSLESS = "lossless"
+    FEATURIZED = "featurized"

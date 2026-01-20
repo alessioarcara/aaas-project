@@ -7,7 +7,7 @@ from flax import nnx, struct
 from gymnasium.vector.vector_env import VectorEnv
 from loguru import logger
 
-from src.nets import MLP
+from src.nets import CNN, MLP
 
 if TYPE_CHECKING:
     from src.config import TrainingConfig
@@ -44,10 +44,11 @@ class Agent(nnx.Module):
         act_shape = envs.single_action_space.n
 
         # din = int(jnp.prod(jnp.array(obs_shape)))
-        din = obs_shape[-1]
+        # din = obs_shape[-1]
 
-        self.critic = MLP(din=din, dhid=256, dout=1, out_scale=1.0, rngs=rngs)
-        self.policy = MLP(din=din, dhid=64, dout=act_shape, out_scale=0.01, rngs=rngs)
+        self.backbone = CNN(obs_shape=obs_shape, num_filters=64, dout=512, rngs=rngs)
+        self.critic = MLP(din=512, dhid=64, dout=1, out_scale=1.0, rngs=rngs)
+        self.policy = MLP(din=512, dhid=64, dout=act_shape, out_scale=0.01, rngs=rngs)
 
         if cfg.use_learning_rate_annealing:
             self._lr_schedule = optax.linear_schedule(
@@ -70,12 +71,14 @@ class Agent(nnx.Module):
 
     @nnx.jit
     def get_deterministic_action(self, obs: jax.Array) -> jax.Array:
-        logits = self.policy(obs)
+        emb = self.backbone(obs)
+        logits = self.policy(emb)
         return jnp.argmax(logits, axis=-1)
 
     @nnx.jit
     def get_value(self, obs: jax.Array) -> jax.Array:
-        return self.critic(obs).squeeze(-1)
+        emb = self.backbone(obs)
+        return self.critic(emb).squeeze(-1)
 
     @nnx.jit
     def get_action_and_value(
@@ -84,8 +87,9 @@ class Agent(nnx.Module):
         action: Optional[jax.Array] = None,
         key: Optional[jax.Array] = None,
     ) -> AgentOutput:
-        logits = self.policy(obs)
-        value = self.critic(obs).squeeze(-1)
+        emb = self.backbone(obs)
+        logits = self.policy(emb)
+        value = self.critic(emb).squeeze(-1)
 
         if action is None:
             if key is None:
@@ -174,6 +178,7 @@ class Agent(nnx.Module):
         update_steps = 0  # to count number of update steps done
 
         # TODO: use jax.lax.scan here for better performance
+        # for now, keep it simple and for loop let me to use early stopping
         for _ in range(self.cfg.update_epochs):
             key, subkey = jax.random.split(key)
             perm_indices = jax.random.permutation(subkey, indices)
