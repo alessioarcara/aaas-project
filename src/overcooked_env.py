@@ -23,7 +23,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         info_level: int = 0,
         horizon: int = 400,
         render_mode: str = "rgb_array",
-        grid_shape: Optional[Tuple[int, int]] = None,
+        grid_shape: Optional[tuple[int, int]] = None,
     ) -> None:
         """
         Args:
@@ -100,7 +100,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
 
     def _pad_obs(self, obs: np.ndarray) -> np.ndarray:
         """
-        Bottom-right pad the observation to the target shape.
+        Pad the observation to the maximum height and width.
         """
         if len(obs.shape) != 3:
             return obs

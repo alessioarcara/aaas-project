@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 from overcooked_ai_py.mdp.overcooked_env import Overcooked, OvercookedEnv, OvercookedGridworld
 
+from src.env_factory import create_eval_envs
 from src.overcooked_env import OvercookedGym
 from src.utils.typings import EncodingType
 
@@ -103,5 +106,20 @@ def test_overcooked_env_lossless_different_layouts():
     obs, _ = env.reset()
 
     expected_shape = (5, 9, 26)  # Max dimensions across both layouts
+    assert obs[0].shape == expected_shape
+    assert obs[1].shape == expected_shape
+
+
+def test_vectorized_overcooked_env():
+    layouts = ["cramped_room", "asymmetric_advantages"]
+
+    envs = create_eval_envs(layouts, EncodingType.LOSSLESS, info_level=1, horizon=400, video_dir=Path("/tmp/videos"))
+
+    obs, _ = envs.reset()
+
+    # cramped_room: 5x4, asymmetric_advantages: 5x9
+    # pad to max size -> 5x9
+    expected_shape = (2, 5, 9, 26)
+
     assert obs[0].shape == expected_shape
     assert obs[1].shape == expected_shape
