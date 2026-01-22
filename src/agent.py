@@ -39,13 +39,45 @@ class Agent(nnx.Module):
         rngs: nnx.Rngs,
     ):
         self.cfg = cfg
+        self.net_cfg = cfg.network
+
         obs_shape = envs.single_observation_space.shape
-        act_shape = envs.single_action_space.n
+        num_actions = envs.single_action_space.n
 
-        self.backbone = CNN(obs_shape=obs_shape, num_filters=64, dout=512, rngs=rngs)
-        self.critic = MLP(din=512, dhid=64, dout=1, out_scale=1.0, rngs=rngs)
-        self.policy = MLP(din=512, dhid=64, dout=act_shape, out_scale=0.01, rngs=rngs)
+        emb_dim = self.net_cfg.embedding_dim
 
+        # * -- Backbones ---
+        def create_backbone(rngs: nnx.Rngs) -> nnx.Module:
+            if self.net_cfg.type == "mlp":
+                return MLP(
+                    din=obs_shape[0],
+                    dhid=self.net_cfg.hidden_dim,
+                    dout=emb_dim,
+                    rngs=rngs,
+                )
+            elif self.net_cfg.type == "cnn":
+                return CNN(
+                    obs_shape=obs_shape,
+                    num_filters=self.net_cfg.num_filters,
+                    dout=emb_dim,
+                    rngs=rngs,
+                )
+            else:
+                raise ValueError(f"Unknown network architecture: {self.net_cfg.type}")
+
+        if self.net_cfg.shared_backbone:
+            logger.info("🔗 Using shared backbone")
+            self.backbone = create_backbone(rngs)
+        else:
+            logger.info("✂️ Using separate backbones")
+            self.policy_backbone = create_backbone(rngs)
+            self.value_backbone = create_backbone(rngs)
+
+        # * --- Heads ---
+        self.policy_head = nnx.Linear(emb_dim, num_actions, rngs=rngs, kernel_init=nnx.initializers.orthogonal(0.01))
+        self.value_head = nnx.Linear(emb_dim, 1, rngs=rngs, kernel_init=nnx.initializers.orthogonal(1.0))
+
+        # * --- Optimizer ---
         if cfg.use_learning_rate_annealing:
             self._lr_schedule = optax.linear_schedule(
                 init_value=cfg.learning_rate, end_value=0.0, transition_steps=cfg.total_updates
@@ -65,16 +97,28 @@ class Agent(nnx.Module):
     def get_learning_rate(self, step: int) -> jax.Array:
         return self._lr_schedule(step)
 
+    def _forward_policy(self, obs: jax.Array) -> jax.Array:
+        if self.net_cfg.shared_backbone:
+            emb = self.backbone(obs)
+        else:
+            emb = self.policy_backbone(obs)
+        return self.policy_head(emb)
+
+    def _forward_value(self, obs: jax.Array) -> jax.Array:
+        if self.net_cfg.shared_backbone:
+            emb = self.backbone(obs)
+        else:
+            emb = self.value_backbone(obs)
+        return self.value_head(emb)
+
     @nnx.jit
     def get_deterministic_action(self, obs: jax.Array) -> jax.Array:
-        emb = self.backbone(obs)
-        logits = self.policy(emb)
+        logits = self._forward_policy(obs)
         return jnp.argmax(logits, axis=-1)
 
     @nnx.jit
     def get_value(self, obs: jax.Array) -> jax.Array:
-        emb = self.backbone(obs)
-        return self.critic(emb).squeeze(-1)
+        return self._forward_value(obs).squeeze(-1)
 
     @nnx.jit
     def get_action_and_value(
@@ -83,9 +127,13 @@ class Agent(nnx.Module):
         action: Optional[jax.Array] = None,
         key: Optional[jax.Array] = None,
     ) -> AgentOutput:
-        emb = self.backbone(obs)
-        logits = self.policy(emb)
-        value = self.critic(emb).squeeze(-1)
+        if self.net_cfg.shared_backbone:
+            emb = self.backbone(obs)
+            logits = self.policy_head(emb)
+            value = self.value_head(emb).squeeze(-1)
+        else:
+            logits = self._forward_policy(obs)
+            value = self._forward_value(obs).squeeze(-1)
 
         if action is None:
             if key is None:
@@ -156,9 +204,6 @@ class Agent(nnx.Module):
         returns: jax.Array,
         key: jax.Array,
     ):
-        """
-        TODO: add docstring
-        """
         flat_segment = segment.flatten()
         batch_size = flat_segment.obs.shape[0]  # B could be (M * N * A) or (M * N)
 

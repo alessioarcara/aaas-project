@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import Any, Optional, Self
+from typing import Annotated, Any, Literal, Optional, Self, Union
 
 from gymnasium.vector import VectorEnv
 from loguru import logger
@@ -11,6 +11,27 @@ from src.config.utils import _deep_merge
 from src.env_factory import create_eval_envs, create_train_envs
 from src.utils.io import read_yaml
 from src.utils.typings import EncodingType, LayoutName, ShapingMode
+
+
+class BaseNetworkConfig(BaseModel):
+    shared_backbone: bool = Field(
+        True, description="Whether to share the backbone between the policy and value networks."
+    )
+    embedding_dim: PositiveInt = Field(...)
+
+
+class MLPConfig(BaseNetworkConfig):
+    type: Literal["mlp"] = Field("mlp", description="Network architecture identifier.")
+    architecture: str = Field("mlp", description="Type of network architecture")
+    hidden_dim: PositiveInt = Field(...)
+
+
+class CNNConfig(BaseNetworkConfig):
+    type: Literal["cnn"] = Field("cnn", description="Network architecture identifier.")
+    num_filters: PositiveInt = Field(...)
+
+
+NetworkConfig = Annotated[Union[MLPConfig, CNNConfig], Field(discriminator="architecture")]
 
 
 class TrainingConfig(BaseModel):
@@ -55,6 +76,7 @@ class TrainingConfig(BaseModel):
     use_parameter_sharing: bool = Field(
         True, description="Whether to share parameters between the two agents in the environment."
     )
+    network: NetworkConfig = Field(default=..., description="Configuration for the neural network architecture.")
 
 
 class EnvironmentConfig(BaseModel):
