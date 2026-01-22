@@ -29,3 +29,4 @@ training_config:
   use_learning_rate_annealing: true
   use_advantage_normalization: true
   use_gradient_clipping: true
+  use_parameter_sharing: false

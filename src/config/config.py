@@ -2,7 +2,6 @@ import sys
 from pathlib import Path
 from typing import Any, Optional, Self
 
-import gymnasium as gym
 from gymnasium.vector import VectorEnv
 from loguru import logger
 from pydantic import BaseModel, DirectoryPath, Field, ValidationError
@@ -15,38 +14,46 @@ from src.utils.typings import EncodingType, LayoutName, ShapingMode
 
 
 class TrainingConfig(BaseModel):
+    # ! --- Rollout ---
     total_updates: PositiveInt = Field(..., description="Total number of training updates")
     num_steps: PositiveInt = Field(
         ...,
         description="Length of each rollout segment collected per environment before an update.",
     )
+    # ! --- PPO ---
+    ppo_epsilon: float = Field(0.2, description="Clip parameter (epsilon) to constrain policy updates.")
+    entropy_coef: float = Field(0.01, description="Coefficient scaling the entropy bonus to encourage exploration.")
+    value_coef: float = Field(
+        0.5, description="Coefficient scaling the value function loss in the total loss objective."
+    )
+    target_kl: Optional[float] = Field(
+        None,
+        description="Target KL divergence for early stopping the current update. If None, no early stopping is used.",
+    )
+    # ! --- GAE ---
     gae_lambda: float = Field(
         0.95,
         description="Controls the bias-variance trade-off for advantage estimation",
     )
     gae_gamma: float = Field(0.99, description="Discount factor for future rewards")
-    ppo_epsilon: float = Field(0.2, description="Clip parameter (epsilon) to constrain policy updates.")
+    use_advantage_normalization: bool = Field(True, description="Whether to normalize the computed advantages.")
+    # ! --- Optimization ---
+    learning_rate: float = Field(...)
     minibatch_size: PositiveInt = Field(...)
     update_epochs: PositiveInt = Field(
         ..., description="Number of times to iterate through the entire collected rollout segment for update."
     )
-    learning_rate: float = Field(...)
     adam_epsilon: float = Field(1e-5, description="Epsilon parameter for the Adam optimizer")
     adam_momentum: float = Field(0.9, description="Momentum parameter for the Adam optimizer")
-    value_coef: float = Field(
-        0.5, description="Coefficient scaling the value function loss in the total loss objective."
-    )
-    entropy_coef: float = Field(0.01, description="Coefficient scaling the entropy bonus to encourage exploration.")
     use_learning_rate_annealing: bool = Field(
         True, description="Whether to linearly anneal the learning rate during training."
     )
-    use_advantage_normalization: bool = Field(True, description="Whether to normalize the computed advantages.")
     use_gradient_clipping: bool = Field(
         False, description="Whether to clip gradients by global norm during the optimization step."
     )
-    target_kl: Optional[float] = Field(
-        None,
-        description="Target KL divergence for early stopping the current update. If None, no early stopping is used.",
+    # ! --- Architecture ---
+    use_parameter_sharing: bool = Field(
+        True, description="Whether to share parameters between the two agents in the environment."
     )
 
 
@@ -135,7 +142,7 @@ class Config(BaseModel):
         )
 
     @property
-    def eval_envs(self) -> dict[LayoutName, gym.Env]:
+    def eval_envs(self) -> VectorEnv:
         return create_eval_envs(
             layouts=self.env_config.layouts,
             encoding=self.env_config.encoding,

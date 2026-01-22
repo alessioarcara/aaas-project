@@ -37,14 +37,10 @@ class Agent(nnx.Module):
         cfg: "TrainingConfig",
         envs: VectorEnv,
         rngs: nnx.Rngs,
-        total_steps: int,
     ):
         self.cfg = cfg
         obs_shape = envs.single_observation_space.shape
         act_shape = envs.single_action_space.n
-
-        # din = int(jnp.prod(jnp.array(obs_shape)))
-        # din = obs_shape[-1]
 
         self.backbone = CNN(obs_shape=obs_shape, num_filters=64, dout=512, rngs=rngs)
         self.critic = MLP(din=512, dhid=64, dout=1, out_scale=1.0, rngs=rngs)
@@ -52,7 +48,7 @@ class Agent(nnx.Module):
 
         if cfg.use_learning_rate_annealing:
             self._lr_schedule = optax.linear_schedule(
-                init_value=cfg.learning_rate, end_value=0.0, transition_steps=total_steps
+                init_value=cfg.learning_rate, end_value=0.0, transition_steps=cfg.total_updates
             )
         else:
             self._lr_schedule = optax.constant_schedule(cfg.learning_rate)
@@ -164,12 +160,13 @@ class Agent(nnx.Module):
         TODO: add docstring
         """
         flat_segment = segment.flatten()
-        batch_size = flat_segment.obs.shape[0]  # M * N
+        batch_size = flat_segment.obs.shape[0]  # B could be (M * N * A) or (M * N)
 
-        b_obs = flat_segment.obs  # (M * N, A, obs_dim)
-        b_advantages = advantages.reshape(batch_size, -1)  # (M * N,)
-        b_returns = returns.reshape(batch_size, -1)  # (M * N,)
-        b_values = flat_segment.values.reshape(batch_size, -1)  # (M * N,)
+        b_obs = flat_segment.obs  # (B, obs_dim)
+
+        b_advantages = advantages.reshape(-1)  # (B,)
+        b_returns = returns.reshape(-1)  # (B,)
+        b_values = flat_segment.values.reshape(-1)  # (B,)
 
         minibatch_size = self.cfg.minibatch_size
 
@@ -177,8 +174,8 @@ class Agent(nnx.Module):
         b_metrics = None
         update_steps = 0  # to count number of update steps done
 
-        # TODO: use jax.lax.scan here for better performance
-        # for now, keep it simple and for loop let me to use early stopping
+        # ! we can use lax.scan for better performance but
+        # ! for now, we keep it simple and for loop let me to use early stopping
         for _ in range(self.cfg.update_epochs):
             key, subkey = jax.random.split(key)
             perm_indices = jax.random.permutation(subkey, indices)

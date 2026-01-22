@@ -46,20 +46,14 @@ class CNN(nnx.Module):
             num_filters, num_filters, (3, 3), padding="SAME", rngs=rngs, kernel_init=hidden_init, bias_init=bias_init
         )
 
-        self.flat_dim = obs_shape[-2] * obs_shape[-3] * num_filters  # Assuming input spatial dimensions are 5x4
+        self.flat_dim = obs_shape[-2] * obs_shape[-3] * num_filters  # H * W * C
         self.fc = nnx.Linear(self.flat_dim, dout, rngs=rngs, kernel_init=hidden_init, bias_init=bias_init)
 
     def __call__(self, x: jax.Array) -> jax.Array:
-        B, A, H, W, C = x.shape
-        x = x.reshape((B * A, H, W, C))
-
         x = nnx.relu(self.conv1(x))
         x = nnx.relu(self.conv2(x))
         x = nnx.relu(self.conv3(x))
 
-        x = x.reshape(B * A, -1)  # (B*A, flat_dim)
+        x = x.reshape(x.shape[0], -1)  # Flatten
         x = nnx.relu(self.fc(x))
-
-        x = x.reshape(B, A, -1)  # (B, A, 256)
-
         return x

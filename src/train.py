@@ -9,14 +9,14 @@ from loguru import logger
 from tqdm import tqdm
 
 import wandb
-from src.agent import Agent
+from src.agent_pair import AgentPair
 from src.config import Config
 from src.rollout import Carry, collect_rollouts, compute_gae
 from src.utils.constants import STATS_KEY
 from src.utils.misc import latest_video_path
 
 
-def eval_agent(agent: Agent, eval_envs: gym.vector.VectorEnv) -> list[float]:
+def eval_agent(agent: AgentPair, eval_envs: gym.vector.VectorEnv) -> list[float]:
     """
     Evaluate the agent on all Overcooked layouts.
     Returns an episode reward for each layout.
@@ -43,8 +43,8 @@ def train(cfg: Config):
     """
     1. Collect rollouts
     2. Compute GAE advantages and returns
-    3. Update agent using collected data
-    4. Evaluate agent periodically
+    3. Update agents using collected data
+    4. Evaluate agents periodically
     """
     video_dir = cfg.video_dir
     if video_dir.exists():
@@ -60,11 +60,10 @@ def train(cfg: Config):
     batch_size = cfg.training_config.num_steps * cfg.env_config.num_envs
     num_updates = total_updates // batch_size
 
-    agent = Agent(
+    agent = AgentPair(
         cfg=cfg.training_config,
         envs=train_envs,
         rngs=nnx.Rngs(cfg.seed),
-        total_steps=total_updates,
     )
 
     wandb.init(

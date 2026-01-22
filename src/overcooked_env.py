@@ -32,6 +32,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
             info_level: The verbosity level of the Overcooked environment.
             horizon: The max number of steps per episode.
             render_mode: The render mode, currently only "rgb_array" is supported.
+            grid_shape: Optional tuple specifying the (height, width) to pad the observations to.
         """
         self.layouts = layouts
         self.encoding = encoding
@@ -117,6 +118,9 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
         return padded_obs
 
     def _encode_obs_and_swap(self, state: OvercookedState, env: OvercookedEnv) -> OvercookedObs:
+        """
+        Encode the observation and swap the agent observations based on self.agent_idx.
+        """
         mdp = env.mdp
 
         if self.encoding == EncodingType.FEATURIZED:
