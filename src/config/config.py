@@ -81,10 +81,11 @@ class TrainingConfig(BaseModel):
         False, description="Whether to clip gradients by global norm during the optimization step."
     )
     # ! --- Architecture ---
+    network: NetworkConfig = Field(default=..., description="Configuration for the neural network architecture.")
+    # ! --- Multi-Agent ---
     use_parameter_sharing: bool = Field(
         True, description="Whether to share parameters between the two agents in the environment."
     )
-    network: NetworkConfig = Field(default=..., description="Configuration for the neural network architecture.")
 
 
 class EnvironmentConfig(BaseModel):

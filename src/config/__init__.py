@@ -1,3 +1,3 @@
-from src.config.config import CNNConfig, Config, MLPConfig, TrainingConfig
+from src.config.config import Config, TrainingConfig
 
-__all__ = ["Config", "TrainingConfig", "MLPConfig", "CNNConfig"]
+__all__ = ["Config", "TrainingConfig"]
