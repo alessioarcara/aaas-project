@@ -5,14 +5,15 @@ import jax.numpy as jnp
 from flax import nnx
 from gymnasium.vector.vector_env import VectorEnv
 
-from src.agent import Agent, AgentOutput
+from src.agent import PPOAgent
+from src.base_agent import Agent, AgentOutput
 
 if TYPE_CHECKING:
     from src.config import TrainingConfig
     from src.rollout import TrajectorySegment
 
 
-class AgentPair(nnx.Module):
+class AgentPair(nnx.Module, Agent):
     """
     Multi-agent wrapper class.
     - share_parameters=True -> 1 agent for both players
@@ -29,11 +30,11 @@ class AgentPair(nnx.Module):
         self.num_agents = envs.num_agents
 
         if self.share_parameters:
-            self.agents = [Agent(cfg, envs, rngs)]
+            self.agents = [PPOAgent(cfg, envs, rngs)]
         else:
             self.agents = [
-                Agent(cfg, envs, rngs),
-                Agent(cfg, envs, rngs),
+                PPOAgent(cfg, envs, rngs),
+                PPOAgent(cfg, envs, rngs),
             ]
 
     # ! Assuming both agents have the same learning rate schedule

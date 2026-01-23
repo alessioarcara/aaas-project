@@ -14,7 +14,7 @@ LayoutName: TypeAlias = Literal[
     "coordination_ring",
 ]
 
-OvercookedObs: TypeAlias = tuple[np.ndarray, np.ndarray]  # shape: (n_agents, obs_dim)
+OvercookedObs: TypeAlias = tuple[np.ndarray, np.ndarray]  # pre_wrapper: (n_agents, obs_dim)
 OvercookedAction: TypeAlias = tuple[int, int]  # (action_agent_0, action_agent_1)
 
 

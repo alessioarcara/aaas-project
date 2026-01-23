@@ -25,6 +25,15 @@ def mock_cfg():
         entropy_coef=0.01,
         value_coef=0.5,
         target_kl=None,
+        network=SimpleNamespace(
+            type="cnn",
+            embedding_dim=512,
+            shared_backbone=False,
+            num_filters=[32, 64, 64],
+            kernel_sizes=[3, 3, 3],
+            strides=[1, 1, 1],
+            paddings=["SAME", "SAME", "SAME"],
+        ),
     )
 
 
@@ -32,7 +41,7 @@ def mock_cfg():
 def mock_env(mocker):
     env = mocker.MagicMock()
     env.num_agents = 2
-    env.single_observation_space.shape = (5, 4, 26)
+    env.single_observation_space.shape = (2, 5, 4, 26)
     env.single_action_space.n = 6
     return env
 
@@ -45,26 +54,6 @@ def mock_rngs():
 @pytest.fixture
 def dummy_obs():
     return jnp.zeros((4, 2, 5, 4, 26), dtype=jnp.float32)  # (B=4, A=2, obs_dim)
-
-
-@pytest.fixture
-def mock_trajectory(request):
-    dims = getattr(request, "param")
-    A = 2
-
-    def z(s=()):
-        return jnp.zeros((*dims, A, *s), dtype=jnp.float32)
-
-    return TrajectorySegment(
-        obs=z((5, 4, 26)),
-        actions=z().astype(jnp.int32),
-        log_probs=z(),
-        rewards=z(),
-        dones=z().astype(bool),
-        values=z(),
-        last_val=jnp.zeros((dims[-1], A), dtype=jnp.float32),
-        last_done=jnp.zeros((dims[-1], A), dtype=bool),
-    )
 
 
 @pytest.mark.parametrize("use_parameter_sharing", [True, False])
@@ -96,7 +85,7 @@ def test_agent_pair_get_action_and_value(mock_cfg, mock_env, mock_rngs, dummy_ob
 
 
 @pytest.mark.parametrize("use_parameter_sharing", [True, False])
-def test_agent_pair_learn_from(mock_cfg, mock_env, mock_rngs, dummy_obs, use_parameter_sharing):
+def test_agent_pair_learn_from(mock_cfg, mock_env, mock_rngs, use_parameter_sharing):
     mock_cfg.use_parameter_sharing = use_parameter_sharing
     agent_pair = AgentPair(mock_cfg, mock_env, mock_rngs)
 

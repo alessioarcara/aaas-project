@@ -90,7 +90,7 @@ def test_overcooked_env_lossless():
 
     obs, _ = env.reset()
 
-    expected_shape = (5, 4, 26)
+    expected_shape = (4, 5, 26)
     assert obs[0].shape == expected_shape
     assert obs[1].shape == expected_shape
 

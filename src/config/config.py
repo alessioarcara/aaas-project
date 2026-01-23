@@ -121,7 +121,7 @@ class Config(BaseModel):
         cls: Self,
         config_paths: list[str | Path],
         overrides: Optional[dict[str, Any]] = None,
-    ) -> "Config":
+    ) -> Self:
         """
         Factory method to create a Config instance from multiple YAML files and optional overrides.
 

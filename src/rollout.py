@@ -4,7 +4,7 @@ import numpy as np
 from flax import struct
 from gymnasium.vector.vector_env import VectorEnv
 
-from src.agent import Agent
+from src.base_agent import Agent
 
 
 @struct.dataclass

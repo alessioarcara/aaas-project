@@ -7,19 +7,12 @@ from flax import nnx, struct
 from gymnasium.vector.vector_env import VectorEnv
 from loguru import logger
 
+from src.base_agent import Agent, AgentOutput
 from src.nets import CNN, MLP
 
 if TYPE_CHECKING:
     from src.config import TrainingConfig
     from src.rollout import TrajectorySegment
-
-
-@struct.dataclass
-class AgentOutput:
-    action: jax.Array
-    action_log_prob: jax.Array
-    entropy: jax.Array
-    value: jax.Array
 
 
 @struct.dataclass
@@ -31,7 +24,7 @@ class Minibatch:
     returns: jax.Array
 
 
-class Agent(nnx.Module):
+class PPOAgent(nnx.Module, Agent):
     def __init__(
         self,
         cfg: "TrainingConfig",

@@ -6,6 +6,7 @@ import gymnasium as gym
 import numpy as np
 import pygame
 from gymnasium import spaces
+from gymnasium.core import RenderFrame
 from overcooked_ai_py.mdp.overcooked_env import Action, OvercookedEnv
 from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld, OvercookedState
 from overcooked_ai_py.visualization.state_visualizer import StateVisualizer
@@ -184,7 +185,7 @@ class OvercookedGym(gym.Env[OvercookedObs, OvercookedAction]):
 
         return obs, float(reward), terminated, truncated, info
 
-    def render(self) -> Optional[np.ndarray]:
+    def render(self) -> RenderFrame | list[RenderFrame] | None:
         """
         Returns:
             A NumPy array of shape (height, width, 3) representing the RGB image of the current state.
