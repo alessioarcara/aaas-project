@@ -25,21 +25,41 @@ class MLP(nnx.Module):
 
 
 class CNN(nnx.Module):
-    def __init__(self, obs_shape: Sequence[int], num_filters: int, dout: int, rngs: nnx.Rngs):
+    def __init__(
+        self,
+        obs_shape: Sequence[int],
+        num_filters: list[int],
+        kernel_sizes: list[int],
+        strides: list[int],
+        paddings: list[str],
+        dout: int,
+        rngs: nnx.Rngs,
+    ):
         hidden_init = nnx.initializers.orthogonal(jnp.sqrt(2))
 
-        self.conv1 = nnx.Conv(obs_shape[-1], num_filters, (3, 3), padding="SAME", rngs=rngs, kernel_init=hidden_init)
-        self.conv2 = nnx.Conv(num_filters, num_filters, (3, 3), padding="SAME", rngs=rngs, kernel_init=hidden_init)
-        self.conv3 = nnx.Conv(num_filters, num_filters, (3, 3), padding="SAME", rngs=rngs, kernel_init=hidden_init)
+        self.conv_layers = []
+        cin = obs_shape[-1]
 
-        self.flat_dim = obs_shape[-2] * obs_shape[-3] * num_filters  # H * W * C
+        for f, k, s, p in zip(num_filters, kernel_sizes, strides, paddings):
+            self.conv_layers.append(
+                nnx.Conv(cin, f, (k, k), strides=(s, s), padding=p, rngs=rngs, kernel_init=hidden_init)
+            )
+            cin = f
+
+        # dummy forward to compute flat_dim
+        dummy_input = jnp.zeros((1, *obs_shape[1:]))
+        dummy_out = self._forward_conv(dummy_input)
+        self.flat_dim = dummy_out.size
+
         self.fc = nnx.Linear(self.flat_dim, dout, rngs=rngs, kernel_init=hidden_init)
 
-    def __call__(self, x: jax.Array) -> jax.Array:
-        x = nnx.relu(self.conv1(x))
-        x = nnx.relu(self.conv2(x))
-        x = nnx.relu(self.conv3(x))
+    def _forward_conv(self, x: jax.Array) -> jax.Array:
+        for conv in self.conv_layers:
+            x = nnx.relu(conv(x))
+        return x
 
+    def __call__(self, x: jax.Array) -> jax.Array:
+        x = self._forward_conv(x)
         x = x.reshape(x.shape[0], -1)  # Flatten
         x = nnx.relu(self.fc(x))
         return x

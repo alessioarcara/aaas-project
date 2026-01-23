@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal, Optional, Self, Union
 
 from gymnasium.vector import VectorEnv
 from loguru import logger
-from pydantic import BaseModel, DirectoryPath, Field, ValidationError
+from pydantic import BaseModel, DirectoryPath, Field, ValidationError, model_validator
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
@@ -22,16 +22,24 @@ class BaseNetworkConfig(BaseModel):
 
 class MLPConfig(BaseNetworkConfig):
     type: Literal["mlp"] = Field("mlp", description="Network architecture identifier.")
-    architecture: str = Field("mlp", description="Type of network architecture")
     hidden_dim: PositiveInt = Field(...)
 
 
 class CNNConfig(BaseNetworkConfig):
     type: Literal["cnn"] = Field("cnn", description="Network architecture identifier.")
-    num_filters: PositiveInt = Field(...)
+    num_filters: list[PositiveInt] = Field(...)
+    kernel_sizes: list[PositiveInt] = Field(...)
+    strides: list[PositiveInt] = Field(...)
+    paddings: list[Literal["SAME", "VALID"]] = Field(...)
+
+    @model_validator(mode="after")
+    def check_lengths_match(self) -> Self:
+        if not (len(self.num_filters) == len(self.kernel_sizes) == len(self.strides) == len(self.paddings)):
+            raise ValueError("num_filters, kernel_sizes, strides, and paddings must have the same length.")
+        return self
 
 
-NetworkConfig = Annotated[Union[MLPConfig, CNNConfig], Field(discriminator="architecture")]
+NetworkConfig = Annotated[Union[MLPConfig, CNNConfig], Field(discriminator="type")]
 
 
 class TrainingConfig(BaseModel):

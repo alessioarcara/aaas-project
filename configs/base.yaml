@@ -30,3 +30,11 @@ training_config:
   use_advantage_normalization: true
   use_gradient_clipping: true
   use_parameter_sharing: false
+  network:
+    type: cnn 
+    shared_backbone: false
+    num_filters: [32, 64, 64]
+    kernel_sizes: [5, 3, 3]
+    strides: [1, 1, 1]
+    paddings: ["SAME", "SAME", "SAME"]
+    embedding_dim: 512

@@ -59,6 +59,9 @@ class Agent(nnx.Module):
                 return CNN(
                     obs_shape=obs_shape,
                     num_filters=self.net_cfg.num_filters,
+                    kernel_sizes=self.net_cfg.kernel_sizes,
+                    strides=self.net_cfg.strides,
+                    paddings=self.net_cfg.paddings,
                     dout=emb_dim,
                     rngs=rngs,
                 )
