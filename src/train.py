@@ -16,12 +16,12 @@ from src.utils.constants import STATS_KEY
 from src.utils.misc import latest_video_path
 
 
-def eval_agent(agent: AgentPair, eval_envs: gym.vector.VectorEnv) -> list[float]:
+def eval_agent(agent: AgentPair, eval_envs: gym.vector.VectorEnv, seed: int) -> list[float]:
     """
     Evaluate the agent on all Overcooked layouts.
     Returns an episode reward for each layout.
     """
-    obs, _ = eval_envs.reset()
+    obs, _ = eval_envs.reset(seed=seed)
     num_envs = eval_envs.num_envs
 
     done = np.zeros(num_envs, dtype=bool)
@@ -74,7 +74,7 @@ def train(cfg: Config):
     )
 
     try:
-        obs, _ = train_envs.reset()
+        obs, _ = train_envs.reset(seed=cfg.seed)
         key, rollout_key = jax.random.split(key)
 
         carry = Carry(
@@ -106,7 +106,7 @@ def train(cfg: Config):
             log_data["train/lr"] = agent.get_learning_rate(global_step).item()
 
             if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
-                rewards_per_layout = eval_agent(agent, eval_envs)
+                rewards_per_layout = eval_agent(agent, eval_envs, seed=cfg.seed)
 
                 for i, layout in enumerate(cfg.env_config.layouts):
                     log_data[f"eval/{layout}_reward"] = rewards_per_layout[i]
