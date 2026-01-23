@@ -7,19 +7,12 @@ from flax import nnx, struct
 from gymnasium.vector.vector_env import VectorEnv
 from loguru import logger
 
+from src.base_agent import Agent, AgentOutput
 from src.nets import CNN, MLP
 
 if TYPE_CHECKING:
     from src.config import TrainingConfig
     from src.rollout import TrajectorySegment
-
-
-@struct.dataclass
-class AgentOutput:
-    action: jax.Array
-    action_log_prob: jax.Array
-    entropy: jax.Array
-    value: jax.Array
 
 
 @struct.dataclass
@@ -31,28 +24,59 @@ class Minibatch:
     returns: jax.Array
 
 
-class Agent(nnx.Module):
+class PPOAgent(nnx.Module, Agent):
     def __init__(
         self,
         cfg: "TrainingConfig",
         envs: VectorEnv,
         rngs: nnx.Rngs,
-        total_steps: int,
     ):
         self.cfg = cfg
+        self.net_cfg = cfg.network
+
         obs_shape = envs.single_observation_space.shape
-        act_shape = envs.single_action_space.n
+        num_actions = envs.single_action_space.n
 
-        # din = int(jnp.prod(jnp.array(obs_shape)))
-        # din = obs_shape[-1]
+        emb_dim = self.net_cfg.embedding_dim
 
-        self.backbone = CNN(obs_shape=obs_shape, num_filters=64, dout=512, rngs=rngs)
-        self.critic = MLP(din=512, dhid=64, dout=1, out_scale=1.0, rngs=rngs)
-        self.policy = MLP(din=512, dhid=64, dout=act_shape, out_scale=0.01, rngs=rngs)
+        # * -- Backbones ---
+        def create_backbone(rngs: nnx.Rngs) -> nnx.Module:
+            if self.net_cfg.type == "mlp":
+                return MLP(
+                    din=obs_shape[0],
+                    dhid=self.net_cfg.hidden_dim,
+                    dout=emb_dim,
+                    rngs=rngs,
+                )
+            elif self.net_cfg.type == "cnn":
+                return CNN(
+                    obs_shape=obs_shape,
+                    num_filters=self.net_cfg.num_filters,
+                    kernel_sizes=self.net_cfg.kernel_sizes,
+                    strides=self.net_cfg.strides,
+                    paddings=self.net_cfg.paddings,
+                    dout=emb_dim,
+                    rngs=rngs,
+                )
+            else:
+                raise ValueError(f"Unknown network architecture: {self.net_cfg.type}")
 
+        if self.net_cfg.shared_backbone:
+            logger.info("🔗 Using shared backbone")
+            self.backbone = create_backbone(rngs)
+        else:
+            logger.info("✂️ Using separate backbones")
+            self.policy_backbone = create_backbone(rngs)
+            self.value_backbone = create_backbone(rngs)
+
+        # * --- Heads ---
+        self.policy_head = nnx.Linear(emb_dim, num_actions, rngs=rngs, kernel_init=nnx.initializers.orthogonal(0.01))
+        self.value_head = nnx.Linear(emb_dim, 1, rngs=rngs, kernel_init=nnx.initializers.orthogonal(1.0))
+
+        # * --- Optimizer ---
         if cfg.use_learning_rate_annealing:
             self._lr_schedule = optax.linear_schedule(
-                init_value=cfg.learning_rate, end_value=0.0, transition_steps=total_steps
+                init_value=cfg.learning_rate, end_value=0.0, transition_steps=cfg.total_updates
             )
         else:
             self._lr_schedule = optax.constant_schedule(cfg.learning_rate)
@@ -69,16 +93,28 @@ class Agent(nnx.Module):
     def get_learning_rate(self, step: int) -> jax.Array:
         return self._lr_schedule(step)
 
+    def _forward_policy(self, obs: jax.Array) -> jax.Array:
+        if self.net_cfg.shared_backbone:
+            emb = self.backbone(obs)
+        else:
+            emb = self.policy_backbone(obs)
+        return self.policy_head(emb)
+
+    def _forward_value(self, obs: jax.Array) -> jax.Array:
+        if self.net_cfg.shared_backbone:
+            emb = self.backbone(obs)
+        else:
+            emb = self.value_backbone(obs)
+        return self.value_head(emb)
+
     @nnx.jit
     def get_deterministic_action(self, obs: jax.Array) -> jax.Array:
-        emb = self.backbone(obs)
-        logits = self.policy(emb)
+        logits = self._forward_policy(obs)
         return jnp.argmax(logits, axis=-1)
 
     @nnx.jit
     def get_value(self, obs: jax.Array) -> jax.Array:
-        emb = self.backbone(obs)
-        return self.critic(emb).squeeze(-1)
+        return self._forward_value(obs).squeeze(-1)
 
     @nnx.jit
     def get_action_and_value(
@@ -87,9 +123,13 @@ class Agent(nnx.Module):
         action: Optional[jax.Array] = None,
         key: Optional[jax.Array] = None,
     ) -> AgentOutput:
-        emb = self.backbone(obs)
-        logits = self.policy(emb)
-        value = self.critic(emb).squeeze(-1)
+        if self.net_cfg.shared_backbone:
+            emb = self.backbone(obs)
+            logits = self.policy_head(emb)
+            value = self.value_head(emb).squeeze(-1)
+        else:
+            logits = self._forward_policy(obs)
+            value = self._forward_value(obs).squeeze(-1)
 
         if action is None:
             if key is None:
@@ -160,16 +200,14 @@ class Agent(nnx.Module):
         returns: jax.Array,
         key: jax.Array,
     ):
-        """
-        TODO: add docstring
-        """
         flat_segment = segment.flatten()
-        batch_size = flat_segment.obs.shape[0]  # M * N
+        batch_size = flat_segment.obs.shape[0]  # B could be (M * N * A) or (M * N)
 
-        b_obs = flat_segment.obs  # (M * N, A, obs_dim)
-        b_advantages = advantages.reshape(batch_size, -1)  # (M * N,)
-        b_returns = returns.reshape(batch_size, -1)  # (M * N,)
-        b_values = flat_segment.values.reshape(batch_size, -1)  # (M * N,)
+        b_obs = flat_segment.obs  # (B, obs_dim)
+
+        b_advantages = advantages.reshape(-1)  # (B,)
+        b_returns = returns.reshape(-1)  # (B,)
+        b_values = flat_segment.values.reshape(-1)  # (B,)
 
         minibatch_size = self.cfg.minibatch_size
 
@@ -177,8 +215,8 @@ class Agent(nnx.Module):
         b_metrics = None
         update_steps = 0  # to count number of update steps done
 
-        # TODO: use jax.lax.scan here for better performance
-        # for now, keep it simple and for loop let me to use early stopping
+        # ! we can use lax.scan for better performance but
+        # ! for now, we keep it simple and for loop let me to use early stopping
         for _ in range(self.cfg.update_epochs):
             key, subkey = jax.random.split(key)
             perm_indices = jax.random.permutation(subkey, indices)

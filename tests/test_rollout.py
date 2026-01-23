@@ -112,6 +112,8 @@ def test_compute_gae():
                 [False] * NUM_ENVS,
             ]
         ),
+        actions=jnp.zeros((4, NUM_ENVS)),  # Dummy actions
+        log_probs=jnp.zeros((4, NUM_ENVS)),  # Dummy log_probs
         values=jnp.tile(agent_values[:, None], (1, NUM_ENVS)),
         last_value=jnp.zeros(NUM_ENVS),  # Dummy last value
         last_done=jnp.zeros(NUM_ENVS, dtype=bool),  # Dummy last done
@@ -166,6 +168,8 @@ def test_flatten_trajectory_segment():
         rewards=jnp.zeros((400, 15)),
         dones=jnp.zeros((400, 15), dtype=bool),
         values=jnp.zeros((400, 15)),
+        actions=jnp.zeros((400, 15), dtype=jnp.int32),
+        log_probs=jnp.zeros((400, 15)),
         last_value=jnp.zeros((15,)),
         last_done=jnp.zeros((15,), dtype=bool),
     )

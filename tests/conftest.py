@@ -1,6 +1,7 @@
 import pytest
 
 from src.env_factory import create_train_envs
+from src.utils.typings import EncodingType, ShapingMode
 from tests.constants import NUM_ENVS
 
 
@@ -19,8 +20,10 @@ def vector_env():
     envs = create_train_envs(
         num_envs=NUM_ENVS,
         layouts=["cramped_room"],
+        encoding=EncodingType.FEATURIZED,
         info_level=1,
         horizon=400,
+        shaping_mode=ShapingMode.NONE,
     )
     yield envs
     envs.close()

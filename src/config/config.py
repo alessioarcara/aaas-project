@@ -1,11 +1,10 @@
 import sys
 from pathlib import Path
-from typing import Any, Optional, Self
+from typing import Annotated, Any, Literal, Optional, Self, Union
 
-import gymnasium as gym
 from gymnasium.vector import VectorEnv
 from loguru import logger
-from pydantic import BaseModel, DirectoryPath, Field, ValidationError
+from pydantic import BaseModel, DirectoryPath, Field, ValidationError, model_validator
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
@@ -14,39 +13,78 @@ from src.utils.io import read_yaml
 from src.utils.typings import EncodingType, LayoutName, ShapingMode
 
 
+class BaseNetworkConfig(BaseModel):
+    shared_backbone: bool = Field(
+        True, description="Whether to share the backbone between the policy and value networks."
+    )
+    embedding_dim: PositiveInt = Field(...)
+
+
+class MLPConfig(BaseNetworkConfig):
+    type: Literal["mlp"] = Field("mlp", description="Network architecture identifier.")
+    hidden_dim: PositiveInt = Field(...)
+
+
+class CNNConfig(BaseNetworkConfig):
+    type: Literal["cnn"] = Field("cnn", description="Network architecture identifier.")
+    num_filters: list[PositiveInt] = Field(...)
+    kernel_sizes: list[PositiveInt] = Field(...)
+    strides: list[PositiveInt] = Field(...)
+    paddings: list[Literal["SAME", "VALID"]] = Field(...)
+
+    @model_validator(mode="after")
+    def check_lengths_match(self) -> Self:
+        if not (len(self.num_filters) == len(self.kernel_sizes) == len(self.strides) == len(self.paddings)):
+            raise ValueError("num_filters, kernel_sizes, strides, and paddings must have the same length.")
+        return self
+
+
+NetworkConfig = Annotated[Union[MLPConfig, CNNConfig], Field(discriminator="type")]
+
+
 class TrainingConfig(BaseModel):
+    # ! --- Rollout ---
     total_updates: PositiveInt = Field(..., description="Total number of training updates")
     num_steps: PositiveInt = Field(
         ...,
         description="Length of each rollout segment collected per environment before an update.",
     )
+    # ! --- PPO ---
+    ppo_epsilon: float = Field(0.2, description="Clip parameter (epsilon) to constrain policy updates.")
+    entropy_coef: float = Field(0.01, description="Coefficient scaling the entropy bonus to encourage exploration.")
+    value_coef: float = Field(
+        0.5, description="Coefficient scaling the value function loss in the total loss objective."
+    )
+    target_kl: Optional[float] = Field(
+        None,
+        description="Target KL divergence for early stopping the current update. If None, no early stopping is used.",
+    )
+    # ! --- GAE ---
     gae_lambda: float = Field(
         0.95,
         description="Controls the bias-variance trade-off for advantage estimation",
     )
     gae_gamma: float = Field(0.99, description="Discount factor for future rewards")
-    ppo_epsilon: float = Field(0.2, description="Clip parameter (epsilon) to constrain policy updates.")
+    use_advantage_normalization: bool = Field(True, description="Whether to normalize the computed advantages.")
+    # ! --- Optimization ---
+    learning_rate: float = Field(...)
     minibatch_size: PositiveInt = Field(...)
     update_epochs: PositiveInt = Field(
         ..., description="Number of times to iterate through the entire collected rollout segment for update."
     )
-    learning_rate: float = Field(...)
     adam_epsilon: float = Field(1e-5, description="Epsilon parameter for the Adam optimizer")
     adam_momentum: float = Field(0.9, description="Momentum parameter for the Adam optimizer")
-    value_coef: float = Field(
-        0.5, description="Coefficient scaling the value function loss in the total loss objective."
-    )
-    entropy_coef: float = Field(0.01, description="Coefficient scaling the entropy bonus to encourage exploration.")
     use_learning_rate_annealing: bool = Field(
         True, description="Whether to linearly anneal the learning rate during training."
     )
-    use_advantage_normalization: bool = Field(True, description="Whether to normalize the computed advantages.")
     use_gradient_clipping: bool = Field(
         False, description="Whether to clip gradients by global norm during the optimization step."
     )
-    target_kl: Optional[float] = Field(
-        None,
-        description="Target KL divergence for early stopping the current update. If None, no early stopping is used.",
+    # ! --- Architecture ---
+    network: NetworkConfig = Field(default=..., description="Configuration for the neural network architecture.")
+    # ! --- Multi-Agent ---
+    use_parameter_sharing: bool = Field(
+        True, description="Whether to share parameters between the two agents in the environment."
     )
 
 
@@ -83,7 +121,7 @@ class Config(BaseModel):
         cls: Self,
         config_paths: list[str | Path],
         overrides: Optional[dict[str, Any]] = None,
-    ) -> "Config":
+    ) -> Self:
         """
         Factory method to create a Config instance from multiple YAML files and optional overrides.
 
@@ -135,7 +173,7 @@ class Config(BaseModel):
         )
 
     @property
-    def eval_envs(self) -> dict[LayoutName, gym.Env]:
+    def eval_envs(self) -> VectorEnv:
         return create_eval_envs(
             layouts=self.env_config.layouts,
             encoding=self.env_config.encoding,

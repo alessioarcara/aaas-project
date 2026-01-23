@@ -12,7 +12,7 @@ from src.utils.typings import EncodingType, LayoutName, ShapingMode
 from src.wrappers import OvercookedVectorRewardShapingWrapper, StackAgentObservationWrapper
 
 
-def _make_train_env(layouts, encoding, info_level, horizon):
+def _make_train_env(layouts: list[LayoutName], encoding: EncodingType, info_level: int, horizon: int) -> gym.Env:
     env = OvercookedGym(
         layouts=layouts,
         encoding=encoding,
@@ -24,7 +24,14 @@ def _make_train_env(layouts, encoding, info_level, horizon):
     return env
 
 
-def _make_eval_env(layout, encoding, info_level, horizon, grid_shape, video_path):
+def _make_eval_env(
+    layout: LayoutName,
+    encoding: EncodingType,
+    info_level: int,
+    horizon: int,
+    grid_shape: tuple[int, int],
+    video_path: Path,
+) -> gym.Env:
     env = OvercookedGym(
         layouts=[layout],
         encoding=encoding,

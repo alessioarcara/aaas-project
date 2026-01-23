@@ -4,29 +4,67 @@ import numpy as np
 from flax import struct
 from gymnasium.vector.vector_env import VectorEnv
 
-from src.agent import Agent
+from src.base_agent import Agent
 
 
 @struct.dataclass
 class TrajectorySegment:
-    obs: jax.Array  # (M, N, A, obs_dim)
-    actions: jax.Array  # (M, N, A)
-    log_probs: jax.Array  # (M, N, A)
-    rewards: jax.Array  # (M, N, A)
-    dones: jax.Array  # (M, N, A)
-    values: jax.Array  # (M, N, A)
-    last_value: jax.Array  # (N, A)
-    last_done: jax.Array  # (N, A)
+    """
+    Data structure holding a trajectory segment collected from vectorized environments.
+
+    M: number of steps
+    N: number of environments
+    A: number of agents
+    """
+
+    obs: jax.Array  # Shared: (M, N, A, ...), Independent: (M, N, ...)
+    actions: jax.Array  # Shared: (M, N, A),      Independent: (M, N)
+    log_probs: jax.Array  # Shared: (M, N, A),      Independent: (M, N)
+    rewards: jax.Array  # Shared: (M, N, A),      Independent: (M, N)
+    dones: jax.Array  # Shared: (M, N, A),      Independent: (M, N)
+    values: jax.Array  # Shared: (M, N, A),      Independent: (M, N)
+    last_value: jax.Array  # Shared: (N, A),         Independent: (N,)
+    last_done: jax.Array  # Shared: (N, A),         Independent: (N,)
+
+    def select_agent(self, agent_idx: int) -> "TrajectorySegment":
+        """
+        Extracts a slice of data for a specific agent.
+
+        A dimension is removed in the returned TrajectorySegment.
+        (M, N, A, ...) -> (M, N, ...)
+        (N, A)      -> (N,)
+        """
+        ref_shape = self.actions.shape
+        ref_ndim = len(ref_shape)
+
+        def _slice(x: jax.Array) -> jax.Array:
+            if x.ndim >= ref_ndim and x.shape[:ref_ndim] == ref_shape:
+                return x[:, :, agent_idx]
+
+            last_shape = ref_shape[1:]
+            last_ndim = ref_ndim - 1
+
+            if x.ndim >= last_ndim and x.shape[:last_ndim] == last_shape:
+                return x[:, agent_idx]
+
+            return x
+
+        return jax.tree.map(_slice, self)
 
     @jax.jit
     def flatten(self):
-        ref_m, ref_n = self.obs.shape[:2]
+        """
+        Flattens the first two dimensions (M, N) -> (M * N).
+        """
+        # We use actions as reference
+        batch_shape = self.actions.shape
+        batch_rank = len(batch_shape)
 
         def _maybe_flatten(x: jax.Array) -> jax.Array:
-            if x.shape[0] != ref_m:
-                return x
+            if x.ndim >= batch_rank and x.shape[:batch_rank] == batch_shape:
+                return x.reshape((-1, *x.shape[batch_rank:]))
 
-            return x.reshape((ref_m * ref_n, *x.shape[2:]))
+            return x
 
         return jax.tree.map(_maybe_flatten, self)
 
@@ -82,9 +120,7 @@ def collect_rollouts(envs: VectorEnv, agent: Agent, num_steps: int, carry: Carry
         next_obs, reward, terminated, truncated, info = envs.step(actions[step])
 
         done = np.logical_or(terminated, truncated)
-
-        # ! HACK: (n_envs) -> (n_envs, n_agents)
-        done_broadcast = done[:, np.newaxis]
+        done_broadcast = done[:, np.newaxis]  # (N, 1) to (N, A)
 
         rewards[step] = reward
         dones[step] = done_broadcast
