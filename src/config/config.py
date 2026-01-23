@@ -1,10 +1,11 @@
+import shutil
 import sys
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, Self, Union
 
 from gymnasium.vector import VectorEnv
 from loguru import logger
-from pydantic import BaseModel, DirectoryPath, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
@@ -111,10 +112,17 @@ class Config(BaseModel):
     exp_name: str = Field(..., description="Name of the experiment")
     wandb_project_name: str = Field(..., description="W&B project name for logging")
     wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
+    wandb_group: Optional[str] = Field(default=None, description="W&B group name to group related runs together")
     env_config: EnvironmentConfig = Field(..., description="Environment config")
     training_config: TrainingConfig = Field(..., description="Training config")
-    video_dir: DirectoryPath = Field(default=Path("./videos"), description="Directory to save training videos")
+    # ! --- Evaluation ---
+    video_dir: Optional[Path] = Field(
+        default=Path("./videos"), description="Directory to save training videos. Set to None to disable recording."
+    )
     eval_interval: PositiveInt = Field(default=1, description="Perform an evaluation run every N updates.")
+    num_eval_episodes: PositiveInt = Field(
+        default=5, description="Number of evaluation episodes to run per layout during each evaluation."
+    )
 
     @classmethod
     def from_files(
@@ -160,6 +168,13 @@ class Config(BaseModel):
         except ValidationError as e:
             logger.error(f"❌ Configuration validation failed:\n{e}")
             sys.exit(1)
+
+    def setup_directories(self):
+        if self.video_dir is not None:
+            if self.video_dir.exists():
+                logger.info(f"Clearing existing video directory at {self.video_dir}")
+                shutil.rmtree(self.video_dir)
+            self.video_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def train_envs(self) -> VectorEnv:

@@ -2,8 +2,7 @@ seed: 42
 exp_name: my_experiment
 wandb_project_name: aaas_project
 wandb_entity: aarcara
-video_dir: ./videos
-eval_interval: 10
+eval_interval: 50
 env_config:
   num_envs: 15
   layouts:
@@ -18,7 +17,7 @@ env_config:
   shaping_mode: shared 
 training_config:
   num_steps: 400
-  total_updates: 5_000_000
+  total_updates: 20_000_000
   gae_lambda: 0.90
   gae_gamma: 0.99
   update_epochs: 10
