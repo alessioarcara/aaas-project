@@ -119,7 +119,8 @@ def test_orbax_save_load_nnx(tmp_path: Path, mock_cfg, mock_env):
 
     save_model_weights(model, ckpt_dir / "state")
 
-    state_restored = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_dir / "state")
+    model = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_dir / "state")
+    _, state_restored = nnx.split(model)
 
     jax.tree.map(np.testing.assert_array_equal, state, state_restored)
 
@@ -143,7 +144,8 @@ def test_orbax_overwrite(tmp_path: Path, mock_cfg, mock_env):
 
     save_model_weights(model, ckpt_path)
 
-    state_restored = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_path)
+    model = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_path)
+    _, state_restored = nnx.split(model)
 
     _, state_v2 = nnx.split(model)
 

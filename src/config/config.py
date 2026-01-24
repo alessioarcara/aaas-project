@@ -105,6 +105,10 @@ class EnvironmentConfig(BaseModel):
     shaping_mode: ShapingMode = Field(
         default=ShapingMode.NONE, description="Mode of reward shaping to use in the environment."
     )
+    reward_annealing_steps: Optional[PositiveInt] = Field(
+        default=None,
+        description="Total environment steps over which the reward shaping coefficient linearly decays from 1.0 to 0.0. If None, shaping remains constant at 1.0.",
+    )
 
 
 class Config(BaseModel):

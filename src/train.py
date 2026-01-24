@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
 import gymnasium as gym
 import jax
@@ -25,7 +25,8 @@ def eval_agent(
     eval_envs: gym.vector.VectorEnv,
     seed: int,
     num_episodes: int,
-) -> tuple[float, list[float]]:
+    return_all_episodes: bool = False,
+) -> Union[tuple[float, list[float]], tuple[float, list[float], np.ndarray]]:
     """
     Evaluate the agent across all configured layouts over a specified number of episodes.
 
@@ -34,13 +35,15 @@ def eval_agent(
         eval_envs: Vectorized environments containing the layouts.
         seed: Base seed for reproducibility.
         num_episodes: How many full episodes to run per layout.
+        return_all_episodes: If True, returns the full matrix of episode rewards.
 
     Returns:
-        total_score: Sum of mean rewards across all layouts (scalar).
-        layout_scores: List of mean rewards for each specific layout.
+        - total_score: Sum of mean rewards across all layouts (scalar).
+        - layout_scores: List of mean rewards for each specific layout.
+        - all_episode_rewards (optional): Matrix of rewards for each episode and layout.
     """
     num_envs = eval_envs.num_envs
-    all_episode_rewards = np.zeros((num_episodes, num_envs))
+    all_episode_rewards = np.zeros((num_episodes, num_envs))  # rows: episodes, cols: layouts
 
     eval_seeds = [seed + i for i in range(num_episodes)]
 
@@ -60,6 +63,9 @@ def eval_agent(
 
     reward_per_layout = list(np.mean(all_episode_rewards, axis=0))
     total_reward = sum(reward_per_layout)
+
+    if return_all_episodes:
+        return total_reward, reward_per_layout, all_episode_rewards
 
     return total_reward, reward_per_layout
 
@@ -91,6 +97,8 @@ def train(cfg: Config, trial: Optional[optuna.Trial] = None) -> float:
     batch_size = cfg.training_config.num_steps * cfg.env_config.num_envs
     num_updates = total_updates // batch_size
 
+    reward_annealing_steps = cfg.env_config.reward_annealing_steps
+
     agent = AgentPair(
         cfg=cfg.training_config,
         envs=train_envs,
@@ -120,6 +128,13 @@ def train(cfg: Config, trial: Optional[optuna.Trial] = None) -> float:
         for update in tqdm(range(1, num_updates + 1), desc="Training", unit="update", colour="blue", leave=False):
             global_step = update * batch_size
 
+            reward_annealing_coef = (
+                max(0.0, 1.0 - global_step / reward_annealing_steps) if reward_annealing_steps else 1.0
+            )
+
+            if hasattr(train_envs, "set_shaping_coef"):
+                train_envs.set_shaping_coef(reward_annealing_coef)
+
             segment, carry = collect_rollouts(
                 train_envs,
                 agent,
@@ -138,6 +153,7 @@ def train(cfg: Config, trial: Optional[optuna.Trial] = None) -> float:
 
             log_data = {f"train/{k}": v.item() for k, v in metrics.items()}
             log_data["train/lr"] = agent.get_learning_rate(global_step).item()
+            log_data["train/reward_annealing_coef"] = reward_annealing_coef
 
             if cfg.eval_interval > 0 and update % cfg.eval_interval == 0:
                 total_reward, rewards_per_layout = eval_agent(

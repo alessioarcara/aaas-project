@@ -1,4 +1,4 @@
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -13,6 +13,7 @@ class OvercookedVectorRewardShapingWrapper(VectorWrapper):
         env: gym.vector.VectorEnv,
         shaping_mode: ShapingMode,
         num_agents: int = 2,
+        annealing_steps: Optional[int] = None,
     ) -> None:
         """
         A VectorWrapper that handles reward shaping and dimension broadcasting
@@ -29,6 +30,10 @@ class OvercookedVectorRewardShapingWrapper(VectorWrapper):
         super().__init__(env)
         self.shaping_mode = shaping_mode
         self.num_agents = num_agents
+        self.shaping_coef = 1.0
+
+    def set_shaping_coef(self, coef: float) -> None:
+        self.shaping_coef = coef
 
     def step(self, actions: Any) -> Tuple[Any, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
         obs, reward, terminated, truncated, info = self.env.step(actions)
@@ -45,6 +50,7 @@ class OvercookedVectorRewardShapingWrapper(VectorWrapper):
                 # ! NumPy tries to cast the whole list to a float, crashing.
                 # ! .tolist() unwraps it into a pure Python list-of-lists, allowing NumPy to infer 2D structure.
                 shaping_arr = np.array(shaping.tolist(), dtype=np.float32)
+                shaping_arr *= self.shaping_coef
 
                 if self.shaping_mode == ShapingMode.INDIVIDUAL:
                     # Logic: [R, R] + [S1, S2]

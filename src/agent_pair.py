@@ -27,7 +27,6 @@ class AgentPair(nnx.Module, Agent):
         rngs: nnx.Rngs,
     ):
         self.share_parameters = cfg.use_parameter_sharing
-        self.num_agents = envs.num_agents
 
         if self.share_parameters:
             self.agents = [PPOAgent(cfg, envs, rngs)]
