@@ -122,9 +122,42 @@ def test_orbax_save_load_nnx(tmp_path: Path, mock_cfg, mock_env):
     save_model_weights(model, ckpt_dir / "state")
 
     abstract_model = nnx.eval_shape(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)))
-    graphdef, abstract_state = nnx.split(abstract_model)
+    _, abstract_state = nnx.split(abstract_model)
 
     with ocp.StandardCheckpointer() as ckptr:
         state_restored = ckptr.restore(ckpt_dir / "state", abstract_state)
 
     jax.tree.map(np.testing.assert_array_equal, state, state_restored)
+
+
+def test_orbax_overwrite(tmp_path: Path, mock_cfg, mock_env):
+    # Test that when I save the model weights to the same path twice,
+    # it overwrites the previous weights.
+
+    ckpt_path = tmp_path / "ckpt" / "state"
+
+    model = AgentPair(mock_cfg, mock_env, nnx.Rngs(0))
+
+    save_model_weights(model, ckpt_path)
+
+    _, state_v1 = nnx.split(model)
+    state_v1 = jax.tree.map(jnp.array, state_v1)
+
+    _, state = nnx.split(model)
+    state = jax.tree.map(lambda x: x + 1.0, state)
+    nnx.update(model, state)
+
+    save_model_weights(model, ckpt_path)
+
+    abstract_model = nnx.eval_shape(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)))
+    _, abstract_state = nnx.split(abstract_model)
+
+    with ocp.StandardCheckpointer() as ckptr:
+        state_restored = ckptr.restore(ckpt_path, abstract_state)
+
+    _, state_v2 = nnx.split(model)
+
+    with pytest.raises(AssertionError):
+        jax.tree.map(np.testing.assert_array_equal, state_v1, state_restored)
+
+    jax.tree.map(np.testing.assert_array_equal, state_v2, state_restored)

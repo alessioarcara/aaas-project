@@ -8,4 +8,4 @@ def save_model_weights(agent: nnx.Module, path: Path):
     _, state = nnx.split(agent)
 
     with ocp.StandardCheckpointer() as ckptr:
-        ckptr.save(path.absolute(), state)
+        ckptr.save(path.absolute(), state, force=True)

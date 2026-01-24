@@ -12,97 +12,87 @@ from src.config import Config
 from src.train import train
 
 os.environ["SDL_AUDIODRIVER"] = "dummy"
-
 STORAGE_URL = "sqlite:///optuna_study.db"
 SEED = 42
 
 
-def objective(trial: optuna.Trial, base_config_path: Path, group_name: str) -> float:
-    trial_num = trial.number
-
-    # ! --- Rollout ---
-    num_steps = trial.suggest_categorical("num_steps", [400, 800])
-
-    # ! --- PPO ---
-    ent_coef = trial.suggest_float("entropy_coef", 0.01, 0.3, log=True)
-    gae_lambda = trial.suggest_float("gae_lambda", 0.9, 0.99)
-    update_epochs = trial.suggest_int("update_epochs", 4, 10)
-
-    # ! --- Optimization ---
-    lr = trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True)
-
-    # ! --- Network ---
+def get_network_config(trial: optuna.Trial) -> dict[str, any]:
     net_type = trial.suggest_categorical("network_type", ["mlp", "cnn"])
-    param_sharing = trial.suggest_categorical("use_parameter_sharing", [True, False])
+    shared_backbone = trial.suggest_categorical(f"{net_type}_shared_backbone", [True, False])
 
-    # ! --- MLP ---
     if net_type == "mlp":
-        env_encoding = "featurized"
-        hidden_dim = trial.suggest_categorical("mlp_hidden_dim", [64, 128, 256])
-        shared_backbone = trial.suggest_categorical("mlp_shared_backbone", [True, False])
-        network_config = {
+        return "featurized", {
             "type": "mlp",
-            "hidden_dim": hidden_dim,
+            "hidden_dim": trial.suggest_categorical("mlp_hidden_dim", [64, 128, 256]),
             "embedding_dim": 64,
             "shared_backbone": shared_backbone,
         }
 
-    # ! --- CNN ---
-    else:
-        env_encoding = "lossless"
-        cnn_preset = trial.suggest_categorical("cnn_preset", ["small", "medium"])
-        shared_backbone = trial.suggest_categorical("cnn_shared_backbone", [True, False])
+    cnn_preset = trial.suggest_categorical("cnn_preset", ["small", "medium"])
+    presets = {
+        "small": {"num_filters": [32, 32], "kernel_sizes": [3, 3], "embedding_dim": 256},
+        "medium": {"num_filters": [32, 64, 64], "kernel_sizes": [3, 3, 3], "embedding_dim": 512},
+    }
 
-        if cnn_preset == "small":
-            network_config = {
-                "type": "cnn",
-                "num_filters": [32, 32],
-                "kernel_sizes": [3, 3],
-                "strides": [1, 1],
-                "paddings": ["SAME", "SAME"],
-                "embedding_dim": 256,
-            }
-        else:
-            network_config = {
-                "type": "cnn",
-                "num_filters": [32, 64, 64],
-                "kernel_sizes": [3, 3, 3],
-                "strides": [1, 1, 1],
-                "paddings": ["SAME", "SAME", "SAME"],
-                "embedding_dim": 512,
-            }
+    net_config = {
+        "type": "cnn",
+        "strides": [1] * len(presets[cnn_preset]["num_filters"]),
+        "paddings": ["SAME"] * len(presets[cnn_preset]["num_filters"]),
+        "shared_backbone": shared_backbone,
+        **presets[cnn_preset],
+    }
+    return "lossless", net_config
 
-        network_config["shared_backbone"] = shared_backbone
+
+def objective(trial: optuna.Trial, base_config_path: Path, group_name: str) -> float:
+    env_encoding, network_config = get_network_config(trial)
 
     overrides = {
         "seed": SEED,
-        "exp_name": f"optuna_trial_{trial_num}",
+        "exp_name": f"trial_{trial.number}",
         "wandb_group": group_name,
-        "env_config": {
-            "encoding": env_encoding,
-        },
+        "env_config": {"encoding": env_encoding},
         "training_config": {
-            "num_steps": num_steps,
-            "learning_rate": lr,
-            "entropy_coef": ent_coef,
-            "gae_lambda": gae_lambda,
-            "use_parameter_sharing": param_sharing,
-            "update_epochs": update_epochs,
+            "num_steps": trial.suggest_categorical("num_steps", [400, 800]),
+            "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True),
+            "entropy_coef": trial.suggest_float("entropy_coef", 0.01, 0.3, log=True),
+            "gae_lambda": trial.suggest_float("gae_lambda", 0.9, 0.99),
+            "update_epochs": trial.suggest_int("update_epochs", 4, 10),
+            "use_parameter_sharing": trial.suggest_categorical("use_parameter_sharing", [True, False]),
             "network": network_config,
         },
     }
 
     try:
         cfg = Config.from_files(config_paths=[base_config_path], overrides=overrides)
-        best_score = train(cfg, trial=trial)
-        gc.collect()
-        return best_score
-
+        return train(cfg, trial=trial)
     except optuna.exceptions.TrialPruned:
         raise
     except Exception as e:
-        logger.error(f"Trial {trial_num} failed with error: {e}")
+        logger.error("Trial {} failed: {}", trial.number, e)
         return -float("inf")
+    finally:
+        gc.collect()
+
+
+def main(args: argparse.Namespace):
+    name = args.study_name
+    n_trials = args.trials
+    config_path = args.config
+    study = optuna.create_study(
+        study_name=name,
+        storage=STORAGE_URL,
+        load_if_exists=True,
+        direction="maximize",
+        sampler=TPESampler(seed=SEED, multivariate=True, group=True),
+        pruner=HyperbandPruner(min_resource=5, reduction_factor=3),
+    )
+
+    logger.info(f"Optimization '{name}' started (Trials: {n_trials})")
+    study.optimize(lambda trial: objective(trial, Path(config_path), name), n_trials=n_trials, gc_after_trial=True)
+
+    if study.trials:
+        logger.success(f"Best Trial: {study.best_trial.number} | Value: {study.best_value:.4f}")
 
 
 if __name__ == "__main__":
@@ -112,39 +102,4 @@ if __name__ == "__main__":
     parser.add_argument("--trials", type=int, default=50, help="Total number of trials to run")
     args = parser.parse_args()
 
-    config_path = Path(args.config)
-    if not config_path.exists():
-        logger.error(f"❌ Config file {config_path} does not exist.")
-        exit(1)
-
-    sampler = TPESampler(seed=SEED)
-    pruner = HyperbandPruner(min_resource=5, max_resource="auto", reduction_factor=3)
-
-    logger.info(f"Initializing Optuna Study '{args.study_name}' using local DB: {STORAGE_URL}...")
-
-    study = optuna.create_study(
-        study_name=args.study_name,
-        storage=STORAGE_URL,
-        load_if_exists=True,
-        direction="maximize",
-        sampler=sampler,
-        pruner=pruner,
-    )
-
-    logger.info("🚀 Starting Hyperparameter Tuning...")
-    try:
-        study.optimize(
-            lambda trial: objective(trial, config_path, group_name=args.study_name),
-            n_trials=args.trials,
-            n_jobs=1,
-            gc_after_trial=True,
-        )
-    except KeyboardInterrupt:
-        logger.warning("⚠️ Tuning interrupted by user.")
-    except Exception as e:
-        logger.exception("❌ Critical error during tuning: {}", e)
-
-    if len(study.trials) > 0:
-        logger.success(f"Tuning complete. Best Value: {study.best_value:.6f}")
-    else:
-        logger.warning("No trials completed.")
+    main(args)
