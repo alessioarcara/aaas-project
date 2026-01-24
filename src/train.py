@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 import gymnasium as gym
@@ -14,6 +15,7 @@ from src.agent_pair import AgentPair
 from src.base_agent import Agent
 from src.config import Config
 from src.rollout import Carry, collect_rollouts, compute_gae
+from src.utils.checkpoint import save_model_weights
 from src.utils.constants import STATS_KEY
 from src.utils.misc import latest_video_path, set_global_seeds
 
@@ -72,6 +74,10 @@ def train(cfg: Config, trial: Optional[optuna.Trial] = None) -> float:
     3. Update agents using collected data
     4. Evaluate agents periodically
     """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"{cfg.exp_name}_{timestamp}"
+    checkpoint_path = cfg.checkpoint_dir / run_name if cfg.checkpoint_dir else None
+
     cfg.setup_directories()
     video_dir = cfg.video_dir
 
@@ -95,7 +101,7 @@ def train(cfg: Config, trial: Optional[optuna.Trial] = None) -> float:
         project=cfg.wandb_project_name,
         entity=cfg.wandb_entity,
         group=cfg.wandb_group,
-        name=cfg.exp_name,
+        name=run_name,
         config=cfg.model_dump(),
     )
 
@@ -143,6 +149,8 @@ def train(cfg: Config, trial: Optional[optuna.Trial] = None) -> float:
 
                 if total_reward > best_eval_reward:
                     best_eval_reward = total_reward
+                    if checkpoint_path is not None:
+                        save_model_weights(agent, checkpoint_path)
 
                 log_data["eval/total_reward"] = total_reward
                 for i, layout in enumerate(cfg.env_config.layouts):

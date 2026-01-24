@@ -17,7 +17,7 @@ env_config:
   shaping_mode: shared 
 training_config:
   num_steps: 400
-  total_updates: 20_000_000
+  total_updates: 10_000_000
   gae_lambda: 0.90
   gae_gamma: 0.99
   update_epochs: 10

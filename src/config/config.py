@@ -117,12 +117,13 @@ class Config(BaseModel):
     training_config: TrainingConfig = Field(..., description="Training config")
     # ! --- Evaluation ---
     video_dir: Optional[Path] = Field(
-        default=Path("./videos"), description="Directory to save training videos. Set to None to disable recording."
+        default=None, description="Directory to save training videos. Set to None to disable recording."
     )
     eval_interval: PositiveInt = Field(default=1, description="Perform an evaluation run every N updates.")
     num_eval_episodes: PositiveInt = Field(
         default=5, description="Number of evaluation episodes to run per layout during each evaluation."
     )
+    checkpoint_dir: Optional[Path] = Field(default=None, description="Directory to save model checkpoints.")
 
     @classmethod
     def from_files(

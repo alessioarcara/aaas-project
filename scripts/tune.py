@@ -1,5 +1,6 @@
 import argparse
 import gc
+import os
 from pathlib import Path
 
 import optuna
@@ -9,6 +10,8 @@ from optuna.samplers import TPESampler
 
 from src.config import Config
 from src.train import train
+
+os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 STORAGE_URL = "sqlite:///optuna_study.db"
 SEED = 42
@@ -57,7 +60,7 @@ def objective(trial: optuna.Trial, base_config_path: Path, group_name: str) -> f
                 "kernel_sizes": [3, 3],
                 "strides": [1, 1],
                 "paddings": ["SAME", "SAME"],
-                "embedding_dim": 128,
+                "embedding_dim": 256,
             }
         else:
             network_config = {
@@ -66,7 +69,7 @@ def objective(trial: optuna.Trial, base_config_path: Path, group_name: str) -> f
                 "kernel_sizes": [3, 3, 3],
                 "strides": [1, 1, 1],
                 "paddings": ["SAME", "SAME", "SAME"],
-                "embedding_dim": 256,
+                "embedding_dim": 512,
             }
 
         network_config["shared_backbone"] = shared_backbone
@@ -104,8 +107,8 @@ def objective(trial: optuna.Trial, base_config_path: Path, group_name: str) -> f
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optuna Hyperparameter Tuning for Overcooked PPO")
-    parser.add_argument("--config", type=str, default="config/base.yaml", help="Path to the configuration YAML")
-    parser.add_argument("--study-name", type=str, default="overcooked_ppo_v1", help="Name of the study")
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration YAML")
+    parser.add_argument("--study-name", type=str, required=True, help="Name of the study")
     parser.add_argument("--trials", type=int, default=50, help="Total number of trials to run")
     args = parser.parse_args()
 

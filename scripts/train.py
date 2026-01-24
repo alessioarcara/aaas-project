@@ -3,14 +3,12 @@ import os
 
 from src.config import Config
 from src.train import train
-from src.utils.misc import set_global_seeds
 
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 
 def main(config_paths: list[str]) -> None:
     cfg = Config.from_files(config_paths)
-    set_global_seeds(cfg.seed)
     train(cfg)
 
 
