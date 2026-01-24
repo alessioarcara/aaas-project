@@ -43,7 +43,7 @@ class PPOAgent(nnx.Module, Agent):
         def create_backbone(rngs: nnx.Rngs) -> nnx.Module:
             if self.net_cfg.type == "mlp":
                 return MLP(
-                    din=obs_shape[0],
+                    din=obs_shape[1],
                     dhid=self.net_cfg.hidden_dim,
                     dout=emb_dim,
                     rngs=rngs,

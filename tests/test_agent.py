@@ -1,12 +1,15 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from flax import nnx
 
 from src.agent_pair import AgentPair
 from src.rollout import TrajectorySegment
+from src.utils.checkpoint import load_model_weights, save_model_weights
 
 
 @pytest.fixture
@@ -25,6 +28,7 @@ def mock_cfg():
         entropy_coef=0.01,
         value_coef=0.5,
         target_kl=None,
+        use_parameter_sharing=False,
         network=SimpleNamespace(
             type="cnn",
             embedding_dim=512,
@@ -105,3 +109,47 @@ def test_agent_pair_learn_from(mock_cfg, mock_env, mock_rngs, use_parameter_shar
     key = jax.random.key(0)
     metrics = agent_pair.learn_from(segment, advantages, returns, key)
     assert isinstance(metrics, dict)
+
+
+def test_orbax_save_load_nnx(tmp_path: Path, mock_cfg, mock_env):
+    ckpt_dir = tmp_path / "ckpt"
+
+    model = AgentPair(mock_cfg, mock_env, nnx.Rngs(0))
+    _, state = nnx.split(model)
+
+    save_model_weights(model, ckpt_dir / "state")
+
+    model = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_dir / "state")
+    _, state_restored = nnx.split(model)
+
+    jax.tree.map(np.testing.assert_array_equal, state, state_restored)
+
+
+def test_orbax_overwrite(tmp_path: Path, mock_cfg, mock_env):
+    # Test that when I save the model weights to the same path twice,
+    # it overwrites the previous weights.
+
+    ckpt_path = tmp_path / "ckpt" / "state"
+
+    model = AgentPair(mock_cfg, mock_env, nnx.Rngs(0))
+
+    save_model_weights(model, ckpt_path)
+
+    _, state_v1 = nnx.split(model)
+    state_v1 = jax.tree.map(jnp.array, state_v1)
+
+    _, state = nnx.split(model)
+    state = jax.tree.map(lambda x: x + 1.0, state)
+    nnx.update(model, state)
+
+    save_model_weights(model, ckpt_path)
+
+    model = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_path)
+    _, state_restored = nnx.split(model)
+
+    _, state_v2 = nnx.split(model)
+
+    with pytest.raises(AssertionError):
+        jax.tree.map(np.testing.assert_array_equal, state_v1, state_restored)
+
+    jax.tree.map(np.testing.assert_array_equal, state_v2, state_restored)

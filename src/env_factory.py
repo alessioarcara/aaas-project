@@ -1,5 +1,6 @@
 import functools
 from pathlib import Path
+from typing import Optional
 
 import gymnasium as gym
 import numpy as np
@@ -12,7 +13,12 @@ from src.utils.typings import EncodingType, LayoutName, ShapingMode
 from src.wrappers import OvercookedVectorRewardShapingWrapper, StackAgentObservationWrapper
 
 
-def _make_train_env(layouts: list[LayoutName], encoding: EncodingType, info_level: int, horizon: int) -> gym.Env:
+def _make_train_env(
+    layouts: list[LayoutName],
+    encoding: EncodingType,
+    info_level: int,
+    horizon: int,
+) -> gym.Env:
     env = OvercookedGym(
         layouts=layouts,
         encoding=encoding,
@@ -30,18 +36,27 @@ def _make_eval_env(
     info_level: int,
     horizon: int,
     grid_shape: tuple[int, int],
-    video_path: Path,
+    video_path: Optional[Path],
 ) -> gym.Env:
+    render_mode = "rgb_array" if video_path is not None else None
+
     env = OvercookedGym(
         layouts=[layout],
         encoding=encoding,
         info_level=info_level,
         horizon=horizon,
-        render_mode="rgb_array",
+        render_mode=render_mode,
         grid_shape=grid_shape,
     )
     env = StackAgentObservationWrapper(env)
-    env = gym.wrappers.RecordVideo(env, video_folder=str(video_path), episode_trigger=lambda e: True)
+
+    if video_path is not None:
+        env = gym.wrappers.RecordVideo(
+            env,
+            video_folder=str(video_path),
+            episode_trigger=lambda e: True,
+        )
+
     return env
 
 
@@ -67,7 +82,11 @@ def create_train_envs(
 
 @validate_call
 def create_eval_envs(
-    layouts: list[LayoutName], encoding: EncodingType, info_level: int, horizon: int, video_dir: Path
+    layouts: list[LayoutName],
+    encoding: EncodingType,
+    info_level: int,
+    horizon: int,
+    video_dir: Optional[Path],
 ) -> gym.vector.VectorEnv:
     # Determine common grid shape for all layouts
     # to use as padding size
@@ -81,7 +100,7 @@ def create_eval_envs(
 
     env_fns = []
     for layout in layouts:
-        video_sub_dir = video_dir / layout
+        video_sub_dir = video_dir / layout if video_dir is not None else None
 
         make_env_fn = functools.partial(
             _make_eval_env,

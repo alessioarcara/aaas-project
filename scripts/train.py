@@ -13,7 +13,6 @@ def main(config_paths: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    # TODO: add description
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--configs",

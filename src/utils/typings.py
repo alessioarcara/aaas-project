@@ -12,6 +12,8 @@ LayoutName: TypeAlias = Literal[
     "counter_circuit",
     "forced_coordination",
     "coordination_ring",
+    "cramped_room_tomato",
+    "five_by_five",
 ]
 
 OvercookedObs: TypeAlias = tuple[np.ndarray, np.ndarray]  # pre_wrapper: (n_agents, obs_dim)

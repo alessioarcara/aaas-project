@@ -1,10 +1,11 @@
+import shutil
 import sys
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, Self, Union
 
 from gymnasium.vector import VectorEnv
 from loguru import logger
-from pydantic import BaseModel, DirectoryPath, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from pydantic.types import PositiveInt
 
 from src.config.utils import _deep_merge
@@ -104,6 +105,10 @@ class EnvironmentConfig(BaseModel):
     shaping_mode: ShapingMode = Field(
         default=ShapingMode.NONE, description="Mode of reward shaping to use in the environment."
     )
+    reward_annealing_steps: Optional[PositiveInt] = Field(
+        default=None,
+        description="Total environment steps over which the reward shaping coefficient linearly decays from 1.0 to 0.0. If None, shaping remains constant at 1.0.",
+    )
 
 
 class Config(BaseModel):
@@ -111,10 +116,18 @@ class Config(BaseModel):
     exp_name: str = Field(..., description="Name of the experiment")
     wandb_project_name: str = Field(..., description="W&B project name for logging")
     wandb_entity: str = Field(..., description="W&B entity (user or team) for logging")
+    wandb_group: Optional[str] = Field(default=None, description="W&B group name to group related runs together")
     env_config: EnvironmentConfig = Field(..., description="Environment config")
     training_config: TrainingConfig = Field(..., description="Training config")
-    video_dir: DirectoryPath = Field(default=Path("./videos"), description="Directory to save training videos")
+    # ! --- Evaluation ---
+    video_dir: Optional[Path] = Field(
+        default=None, description="Directory to save training videos. Set to None to disable recording."
+    )
     eval_interval: PositiveInt = Field(default=1, description="Perform an evaluation run every N updates.")
+    num_eval_episodes: PositiveInt = Field(
+        default=5, description="Number of evaluation episodes to run per layout during each evaluation."
+    )
+    checkpoint_dir: Optional[Path] = Field(default=None, description="Directory to save model checkpoints.")
 
     @classmethod
     def from_files(
@@ -160,6 +173,13 @@ class Config(BaseModel):
         except ValidationError as e:
             logger.error(f"❌ Configuration validation failed:\n{e}")
             sys.exit(1)
+
+    def setup_directories(self):
+        if self.video_dir is not None:
+            if self.video_dir.exists():
+                logger.info(f"Clearing existing video directory at {self.video_dir}")
+                shutil.rmtree(self.video_dir)
+            self.video_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def train_envs(self) -> VectorEnv:

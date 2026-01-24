@@ -1,8 +1,10 @@
 seed: 42
-exp_name: base_experiment 
+exp_name: best_experiment_with_reward_annealing 
 wandb_project_name: aaas_project
 wandb_entity: aarcara
 eval_interval: 50
+video_dir: ./videos/
+checkpoint_dir: ./checkpoints/
 env_config:
   num_envs: 15
   layouts:
@@ -12,28 +14,30 @@ env_config:
     - counter_circuit
     - forced_coordination
   info_level: 0
-  encoding: lossless 
+  encoding: featurized 
   horizon: 400
   shaping_mode: shared 
+  reward_annealing_steps: 5_000_000
 training_config:
-  num_steps: 400
-  total_updates: 10_000_000
-  gae_lambda: 0.90
-  gae_gamma: 0.99
+  num_steps: 800
   update_epochs: 10
-  minibatch_size: 4096 
-  learning_rate: 2.5e-4
+  total_updates: 10_000_000
+  gae_lambda: 0.94
+  gae_gamma: 0.99
+  minibatch_size: 4000 
+  learning_rate: 4.5e-4
   value_coef: 0.5
-  entropy_coef: 0.1
+  entropy_coef: 0.0135
+  ppo_epsilon: 0.2
+  adam_epsilon: 1e-5
+  adam_momentum: 0.9
+  max_grad_norm: 0.5
   use_learning_rate_annealing: true
   use_advantage_normalization: true
   use_gradient_clipping: true
-  use_parameter_sharing: false
+  use_parameter_sharing: true
   network:
-    type: cnn 
+    type: mlp
     shared_backbone: false
-    num_filters: [32, 64, 64]
-    kernel_sizes: [5, 3, 3]
-    strides: [1, 1, 1]
-    paddings: ["SAME", "SAME", "SAME"]
-    embedding_dim: 512
+    hidden_dim: 256
+    embedding_dim: 64

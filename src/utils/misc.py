@@ -1,5 +1,13 @@
+import random
 from pathlib import Path
 from typing import Optional
+
+import numpy as np
+
+
+def set_global_seeds(seed: int) -> None:
+    np.random.seed(seed)
+    random.seed(seed)
 
 
 def latest_video_path(directory: Path) -> Optional[Path]:
