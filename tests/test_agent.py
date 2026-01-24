@@ -4,13 +4,12 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
-import orbax.checkpoint as ocp
 import pytest
 from flax import nnx
 
 from src.agent_pair import AgentPair
 from src.rollout import TrajectorySegment
-from src.utils.checkpoint import save_model_weights
+from src.utils.checkpoint import load_model_weights, save_model_weights
 
 
 @pytest.fixture
@@ -115,17 +114,12 @@ def test_agent_pair_learn_from(mock_cfg, mock_env, mock_rngs, use_parameter_shar
 def test_orbax_save_load_nnx(tmp_path: Path, mock_cfg, mock_env):
     ckpt_dir = tmp_path / "ckpt"
 
-    rngs = nnx.Rngs(0)
-    model = AgentPair(mock_cfg, mock_env, rngs)
+    model = AgentPair(mock_cfg, mock_env, nnx.Rngs(0))
     _, state = nnx.split(model)
 
     save_model_weights(model, ckpt_dir / "state")
 
-    abstract_model = nnx.eval_shape(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)))
-    _, abstract_state = nnx.split(abstract_model)
-
-    with ocp.StandardCheckpointer() as ckptr:
-        state_restored = ckptr.restore(ckpt_dir / "state", abstract_state)
+    state_restored = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_dir / "state")
 
     jax.tree.map(np.testing.assert_array_equal, state, state_restored)
 
@@ -149,11 +143,7 @@ def test_orbax_overwrite(tmp_path: Path, mock_cfg, mock_env):
 
     save_model_weights(model, ckpt_path)
 
-    abstract_model = nnx.eval_shape(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)))
-    _, abstract_state = nnx.split(abstract_model)
-
-    with ocp.StandardCheckpointer() as ckptr:
-        state_restored = ckptr.restore(ckpt_path, abstract_state)
+    state_restored = load_model_weights(lambda: AgentPair(mock_cfg, mock_env, nnx.Rngs(0)), ckpt_path)
 
     _, state_v2 = nnx.split(model)
 

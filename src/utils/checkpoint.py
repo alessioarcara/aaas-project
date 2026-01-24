@@ -9,3 +9,13 @@ def save_model_weights(agent: nnx.Module, path: Path):
 
     with ocp.StandardCheckpointer() as ckptr:
         ckptr.save(path.absolute(), state, force=True)
+
+
+def load_model_weights(model_factory, path: Path) -> nnx.Module:
+    abstract_model = nnx.eval_shape(model_factory)
+    _, abstract_state = nnx.split(abstract_model)
+
+    with ocp.StandardCheckpointer() as ckptr:
+        state_restored = ckptr.restore(path.absolute(), abstract_state)
+
+    return state_restored
