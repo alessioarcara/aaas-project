@@ -1,5 +1,5 @@
 seed: 42
-exp_name: my_experiment
+exp_name: base_experiment 
 wandb_project_name: aaas_project
 wandb_entity: aarcara
 eval_interval: 50
