@@ -1,5 +1,5 @@
 seed: 42
-exp_name: optimized
+exp_name: optimized_cnn
 wandb_project_name: aaas_project
 wandb_entity: aarcara
 eval_interval: 50
@@ -14,7 +14,7 @@ env_config:
     - counter_circuit
     - forced_coordination
   info_level: 0
-  encoding: featurized 
+  encoding: lossless 
   horizon: 400
   shaping_mode: shared 
 training_config:
@@ -36,7 +36,10 @@ training_config:
   use_gradient_clipping: true
   use_parameter_sharing: true
   network:
-    type: mlp
+    type: cnn 
     shared_backbone: false
-    hidden_dim: 256
-    embedding_dim: 64
+    num_filters: [32, 32, 32]
+    kernel_sizes: [3, 3, 3]
+    strides: [1, 1, 1]
+    paddings: ["SAME", "SAME", "SAME"]
+    embedding_dim: 64 
