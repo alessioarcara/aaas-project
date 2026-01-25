@@ -106,16 +106,54 @@ the concatenation of agents observations, as in MAPPO.
 
 \section{Background}
 
+\subsection{Proximal Policy Approximation}
+
+\subsection{Indipendent PPO}
+
 \section{Methodology}
 
 \subsection{Implementation}
 
-\subsection{State Representation}
-
+%% devo fare questo oggi
 \subsection{Reward Shaping}
 
-\subsection{Experiments}
+\subsection{State Representation}
 
+By default, the Overcooked environment returns a \textbf{featurized state}
+observation, represented as a fixed-length vector of size 96 designed to
+reduce state complexity. This hand-engineered encoding replaces the raw grid
+with the agent's absolute position, orientation, and relative distances to key
+entities such as the co-player, ingredients, and pots \cite{cai2021overcooked}.
+
+In contrast, the \textbf{lossless state} encoding preserves the complete
+spatial topology of the environment. It is structured as a tensor of shape
+$W\times H\times26$, where $W$ and $H$ represent the layout dimensions. The 26
+channels serve as semantic layers, with each channel acting as a binary mask
+indicating the presence of specific objects at given coordinates. To
+investigate the trade-off between engineered features and complete state
+information, we modified the environment to selectively return either the
+featurized state or the raw lossless tensor \cite{cai2021overcooked}.
+
+\subsection{Architectures}
+
+For featurized states, we employed a three-layer MLP with \texttt{tanh}
+activations, consistent with the standard PPO2 implementation
+\cite{huang2022ppo}.
+
+For lossless states, we used a modified Nature-CNN
+architecture~\cite{mnih2015humanlevel} restricted to kernel sizes of
+$3\times3$ with a stride of $1$. Given the small spatial dimensions of the
+layouts, larger kernels or strides would excessively downsample the feature
+maps, collapsing the grid into a single cell and destroying local spatial
+context.
+
+All hidden layers and convolutions used \textit{orthogonal initialization}
+(scale $\sqrt{2}$, bias $0$). The policy head weights were initialized with a
+scale of 0.01 to ensure a uniform initial action distribution at start for
+maximum exploration, while the value head used a scale of 1.0 to immediately
+match the magnitude of expected returns \cite{huang2022ppo}.
+
+\subsection{Experiments}
 
 \begin{figure}[ht]
     \centering
@@ -125,18 +163,53 @@ the concatenation of agents observations, as in MAPPO.
     \label{fig:training_layouts}
 \end{figure}
 
-\subsubsection{Hardware \& Software} Experiments were conducted on a desktop
-machine equipped with a 16-core CPU, 32 GB of RAM, and an NVIDIA GeForce RTX
-3090 GPU used for both rollout collection and training updates. We developed
-the implementation using \textbf{Jax} and \textbf{Flax}, which helped
-significantly with computation speed. It is important to note that a Jax
-implementation of the environment, such as the one available in JaxMARL, would
-allow for much faster rollout collection. This phase was the main bottleneck
-in our pipeline, as the GPU often remained underutilized while waiting for the
-CPU to finish collecting rollouts. Although we avoided switching to a
-Jax-native environment to align with the specific requirements of the project,
-such a transition would be incredibly beneficial to maximize computational
-throughput.
+To understand the model capacity to generalize, we use a wrapper of the
+Overcooked-AI environment that samples one layout from a list of layouts at
+every reset. In this way, we hope the agent pair becomes invariant to the
+layout and understands how to generalize.
+
+We select 5 layouts for the \textbf{training set}: \textit{Cramped Room},
+\textit{Asymmetric Advantage}, \textit{Coordination Ring}, \textit{Counter
+Circuit}, and \textit{Forced Coordination} (Figure
+\ref{fig:training_layouts}). We evaluate generalization on a separate
+\textbf{test set}: \textit{Cramped Room Tomato} (introduces tomatoes) and a $5
+\times 5$ (more open-space).
+
+Since every layout has different dimensions in width and height, this presents
+a problem for lossless encoding. Because the Nature-CNN inspired architecture
+involves a flattening step after the convolutional layers, and the subsequent
+fully connected layer requires fixed dimensions, it is necessary to pad each
+layout to the maximum dimension among all layouts.
+
+Every 50 batches during training, the agent is evaluated in \textbf{self-play}
+on all 5 training layouts. Training runs for 10M environment steps resulting
+in roughly 400 batches. Each layout is tested with 5 rollouts, and the total
+reward across layouts is summed. The agent pair achieving the highest total
+reward is saved. At the end of training, the best agent pair is reloaded and
+evaluated again on all layouts, including the holdout set, using 10 rollouts
+per layout.
+
+In addition to the generalized agent pair, we also trained agent pairs on each
+individual training layout. This let us see the maximum reward an agent can
+achieve when it focuses solely on one layout, and gave us a baseline to
+compare against the generalized pair. By looking at this comparison, we can
+understand what the generalized agent learns across multiple layouts, and
+whether trying to be versatile comes at the cost of performing optimally on
+any single layout.
+
+\subsubsection{Hardware \& Software} 
+
+Experiments were conducted on a desktop machine equipped with a 16-core CPU,
+32 GB of RAM, and an NVIDIA GeForce RTX 3090 GPU with 24GB of VRAM, used for
+both rollout collection and training updates. We developed the implementation
+using \textbf{Jax} and \textbf{Flax}, which helped significantly with
+computation speed. It is important to note that a Jax implementation of the
+environment, such as the one available in JaxMARL, would allow for much faster
+rollout collection. This phase was the main bottleneck in our pipeline, as the
+GPU often remained underutilized while waiting for the CPU to finish
+collecting rollouts. Although we avoided switching to a Jax-native environment
+to align with the specific requirements of the project, such a transition
+would be incredibly beneficial to maximize computational throughput.
 
 Furthermore, since the primary bottleneck is rollout collection, a
 \textbf{vectorized environment} was utilized to run multiple environments in
@@ -173,14 +246,28 @@ rates of $10^{-4}$–$10^{-3}$. The MLP uses a 256-unit hidden layer. Sharing
 parameters between agents consistently improved performance, whereas sharing a
 backbone between the policy and value networks did not.
 
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.75\linewidth]{./images/reward_per_layout_seed_42}
+    \caption{Episode reward over training steps for each layout, using the
+    multi-layout agent pair trained with the best hyperparameters.}
+    \label{fig:reward_per_layout}
+\end{figure}
+
+The hyperparameters reported in Table~\ref{tab:final_params} were used to
+train both single-layout and multi-layout agent pairs.
+Figure~\ref{fig:reward_per_layout} shows the episode rewards over training
+steps for the multi-layout agent pair across the different layouts.
+
 \subsubsection{Results}
 
 \begin{table}[ht]
     \small
     \centering
     \setlength{\tabcolsep}{4pt} 
-    \caption{Agent Pair Total Reward across different layouts (Average over 10
-    episodes)}
+    \caption{Total reward achieved by agent pairs across training and holdout
+    layouts, averaged over 10 evaluation episodes.}
+    \label{tab:agent_performance}
     \begin{tabular}{l ccccc cc}
         \toprule
         & \multicolumn{5}{c}{\textbf{Training Layouts}} & \multicolumn{2}{c}{\textbf{Holdout Layouts}} \\
@@ -202,11 +289,57 @@ backbone between the policy and value networks did not.
     \end{tabular}
 \end{table}
 
-\begin{center}
-    \includegraphics[width=0.75\linewidth]{./images/reward_per_layout_seed_42}
-\end{center}
+The results reported in Table~\ref{tab:agent_performance} demonstrate that
+IPPO achieves robust performance. Notably, both the single-layout specialized
+pairs and the multi-layout agents converge to high-reward policies on the
+majority of training environments, successfully solving \textit{Cramped Room},
+\textit{Asymmetric Advantage}, \textit{Coordination Ring}, and \textit{Forced
+Coordination}.
+
+However, \textit{Counter Circuit} remains unsolved, yielding zero reward for
+all trained agent pairs. This failure appears to result from a specific
+inability to adapt to ingredient changes; \textit{Counter Circuit} is the only
+layout requiring the delivery of tomato-based dishes. The agents, however,
+persist in behaviors related to onion-based recipes, failing to adjust to the
+tomato availability.
+
+Single-layout agent pairs show no form of generalization and fail completely
+on new layouts. Even if the multi-layout agent pair has some form of
+generalization and successfully solves the \textit{Cramped Tomato} layout, it
+still persists with onion-based deliveries. Moreover, it struggles in more
+complex environments with layouts never seen before.
 
 \section{Discussion \& Conclusion}
+
+Overall, the results indicate the emergence of non-trivial generalization
+behavior. Training on a distribution of layouts enables agents to learn more
+flexible policies that transfer to unseen environments, as evidenced by
+performance on \textit{Cramped Tomato}. However, this generalization remains
+limited and degrades rapidly when agents are evaluated on layouts slightly
+more complex than those encountered during training.
+
+The failure on \textit{Counter Circuit} highlights the influence of
+layout-specific biases. This layout requires exclusively tomato-based
+deliveries, whereas the learned policy remains biased toward onion-based
+deliveries. We hypothesize that this stems from the fact that four of the five
+training layouts involve onion-based deliveries (see Figure
+\ref{fig:training_layouts}). Such over-representation likely biases the
+policy, trapping agents in suboptimal behaviors, effectively ``overfitting''
+to the training distribution. To achieve stronger generalization, it appears
+crucial to extend training with randomized or procedurally generated layouts
+to ensure a more uniform distribution of ingredients and map structures. Since
+Overcooked-AI supports the integration of new layouts, future work could
+explore whether increased diversity in training environments improves transfer
+performance.
+
+% NOTE:
+% maybe we can add curriculum-learning or reward design
+
+In conclusion, these results suggest that multi-layout training may improve
+policy generalization, and IPPO appears to be effective even in multi-agent
+settings. Nonetheless, generalization to unseen scenarios remains limited,
+indicating the need for further investigation into strategies that could
+enhance adaptability to novel layouts.
 
 \bibliographystyle{plain}
 \bibliography{references.bib}
@@ -238,7 +371,7 @@ backbone between the policy and value networks did not.
     \end{tabular}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[hb]
     \centering
     \includegraphics[width=\linewidth]{./images/trials.png}
     \caption{\textbf{Optimization History}: Evolution of objective values
