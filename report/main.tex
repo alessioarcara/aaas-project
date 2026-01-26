@@ -1,51 +1,23 @@
 \documentclass{article}
 
-
-% if you need to pass options to natbib, use, e.g.:
 \PassOptionsToPackage{numbers, compress}{natbib}
-% before loading neurips_2024
 
-
-% ready for submission
 \usepackage[final]{neurips_2024}
 
-
-% to compile a preprint version, e.g., for submission to arXiv, add add the
-% [preprint] option:
-%     \usepackage[preprint]{neurips_2024}
-
-
-% to compile a camera-ready version, add the [final] option, e.g.:
-%     \usepackage[final]{neurips_2024}
-
-
-% to avoid loading the natbib package, add option nonatbib:
-%    \usepackage[nonatbib]{neurips_2024}
-
-
-\usepackage[utf8]{inputenc} % allow utf-8 input
-\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
-\usepackage{hyperref}       % hyperlinks
-\usepackage{url}            % simple URL typesetting
-\usepackage{booktabs}       % professional-quality tables
-\usepackage{amsfonts}       % blackboard math symbols
-\usepackage{nicefrac}       % compact symbols for 1/2, etc.
-\usepackage{microtype}      % microtypography
-\usepackage{xcolor}         % colors
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}     
+\usepackage{url}
+\usepackage{booktabs}     
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{pdflscape}
 
 
 \title{Overcooked}
-
-
-% The \author macro works with any number of authors. There are two commands
-% used to separate the names and addresses of multiple authors: \And and \AND.
-%
-% Using \And between authors leaves it to LaTeX to determine where to break the
-% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
-% authors names on the first line, and the last on the second line, try using
-% \AND instead of \And before the third author name.
 
 
 \author{%
@@ -62,30 +34,41 @@
 
 
 \begin{abstract}
-    % this work focuses on develop and evaluation of multi agent using IPPO as
-    % the main algorithm, a competitive straightforward variation of PPO 
-    % which still is able to obtain highly effective performance
-    % 
-    lorem ipsum dixit
+    This work evaluates the performance of Independent Proximal Policy
+    Optimization (IPPO) on the Overcooked-AI benchmark, a challenging
+    environment for multi-agent coordination. Furthermore, we assess the
+    generalization capabilities of the learned policies by training on five
+    distinct layouts and validating performance on two holdout test
+    environments. While the agent pair exhibited emerging generalization
+    behaviors, our findings indicate that the composition of the training
+    distribution is critical for achieving a truly robust and generalizable
+    policy.
 \end{abstract}
 
 \section{Introduction}
 
-Overcooked-AI\cite{carroll2020utilitylearninghumanshumanai} environment was designed a where the goal is to place three
-onions in a pot, take the resulting soup on a plate and delivering it
 
-% lo sviluppo di agenti che devono cooperare risulta un qualcosa di molto
-% complesso poichè richiede agli agenti di imparare strategie, di cooperare
-% per ottenere dei risultati congiunti
-% spiegare cos'è overcooked
-% che serve come benchmark rispetto allo sviluppo di agenti collaborativi
+The Overcooked-AI environment \cite{carroll2020utilitylearninghumanshumanai}
+is a benchmark for evaluating cooperative performance. In this domain, two
+agents must collaborate to prepare and deliver soups by collecting ingredients
+(e.g., onions or tomatoes), placing them in pots, cooking, and plating the
+result and delivering it. Success in this requires the development of
+coordination strategies, such as dynamic task allocation and collision
+avoidance, particularly within restrictive layouts.
 
-
-that allows benchmark and evaluate
-reinforcement learning (RL) agents on their ability to cooperate with unknown
-partners in unfamiliarity environments
-% overcooked e minifigura
-
+In this work, we focus on the development and evaluation of IPPO agents within
+Overcooked. Our primary objectives are twofold:
+\begin{enumerate}
+    \item \textbf{Architectural analysis:} We investigate optimal training
+        configurations by comparing hand-engineered featurized states
+        (processed via MLPs) against raw lossless grid representations
+        (processed via CNNs), alongside different reward shaping mechanisms.
+    \item \textbf{Generalization:} We aim to move beyond single-layout
+        mastery. By training on a distribution of five distinct training
+        layouts, we evaluate whether agents can learn flexible policies that
+        generalize to unseen layouts, and we analyze the limitations of such
+        generalization regarding map structure versus ingredient types.
+\end{enumerate}
 
 \section{Background}
 
@@ -151,13 +134,13 @@ the concatenation of agents observations, as in MAPPO.
 
 \subsection{Implementation}
 
-For my PPO implementation, I studied the article \textit{The 37 Implementation
-Details of Proximal Policy Optimization} \cite{huang2022ppo}, paying
-particular attention to the first 13 details. Not all details were strictly
-followed; the literature was consulted to determine which were essential and
-which could be omitted. In this section, I describe the specific differences
-from the PPO presented during lessons, focusing on choices made to achieve the
-best possible performance.
+For the PPO implementation, we studied the article \textit{The 37
+Implementation Details of Proximal Policy Optimization} \cite{huang2022ppo},
+paying particular attention to the first 13 details. We did not strictly
+follow every detail; instead, we consulted the literature to determine which
+were essential and which could be omitted. In this section, we describe the
+specific differences from the standard PPO formulation, explaining the choices
+made to achieve the best possible performance.
 
 \begin{itemize}
     \item After collecting rollouts for PPO updates, both returns and advantages
@@ -476,7 +459,8 @@ settings. Nonetheless, generalization to unseen scenarios remains challenging,
 motivating future work on more diverse training environments, refined reward
 shaping, and other strategies that improve adaptability to novel layouts.
 
-\bibliographystyle{plainnat}
+\newpage
+\bibliographystyle{unsrtnat}
 \bibliography{references}
 
 \newpage
