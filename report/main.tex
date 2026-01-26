@@ -2,7 +2,7 @@
 
 
 % if you need to pass options to natbib, use, e.g.:
-%     \PassOptionsToPackage{numbers, compress}{natbib}
+\PassOptionsToPackage{numbers, compress}{natbib}
 % before loading neurips_2024
 
 
@@ -133,8 +133,8 @@ By looking rendered frames and the environment code, we found that Overcooked
 already implements a reward shaping mechanism, returned at each step through
 the \textit{info} dictionary as a dense shaped reward
 (\texttt{ep\_shaped\_r}). The environment assigns fixed positive values for
-specific events such as ingredient placement in the pot (3), dish pickup (3),
-and soup pickup (5).
+specific events such as ingredient placement in the pot ($3$), dish pickup
+($3$), and soup pickup ($5$).
 
 Although this reward-shaping scheme is relatively simple, it proved to be
 highly effective. The use of a dense shaped reward enabled the learning
@@ -194,6 +194,24 @@ All hidden layers and convolutions used \textit{orthogonal initialization}
 scale of 0.01 to ensure a uniform initial action distribution at start for
 maximum exploration, while the value head used a scale of 1.0 to immediately
 match the magnitude of expected returns \cite{huang2022ppo}.
+
+We also explored sharing parts of the network between the policy and the value
+function, either by sharing two MLP layers or by using a CNN backbone with
+separate final policy and value heads. While this approach effectively
+improves computational efficiency, since the shared layers are computed fewer
+times,
+
+In addition, we also explored the possibility of sharing some layers between
+the policy and the value function. In particular, we experimented with sharing
+either two MLP layers or a CNN backbone, followed by a single final layer
+acting as a policy head and a value head. Although this approach effectively
+improves computational efficiency—since the shared two or three layers are
+computed only once, it negatively affects convergence and degrades the final
+return achieved. This behavior is consistent with previous observations, as
+the separate-networks architecture clearly outperforms the shared one in
+simpler environments. The inferior performance of the shared-network
+architecture is likely due to the competing objectives of the policy and value
+functions, as discussed in \cite{huang2022ppo}.
 
 \subsection{Experiments}
 
@@ -374,16 +392,13 @@ Overcooked-AI supports the integration of new layouts, future work could
 explore whether increased diversity in training environments improves transfer
 performance.
 
-% NOTE:
-% maybe we can add curriculum-learning or reward design
+In conclusion, these results show that multi-layout training can improve
+policy generalization, and IPPO proves highly effective even in multi-agent
+settings. Nonetheless, generalization to unseen scenarios remains challenging,
+motivating future work on more diverse training environments, refined reward
+shaping, and other strategies that enhance adaptability to novel layouts.
 
-In conclusion, these results suggest that multi-layout training may improve
-policy generalization, and IPPO appears to be effective even in multi-agent
-settings. Nonetheless, generalization to unseen scenarios remains limited,
-indicating the need for further investigation into strategies that could
-enhance adaptability to novel layouts.
-
-\bibliographystyle{plain}
+\bibliographystyle{plainnat}
 \bibliography{references.bib}
 
 \newpage
