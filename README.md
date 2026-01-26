@@ -1,3 +1,10 @@
+# Autonomous and Adaptive Systems Project
+alessio.arcara@studio.unibo.it
+
+<div align="center">
+  <a href="https://wandb.ai/aarcara/aaas_project/table?nw=nwuseralessioarcara"><img src="./assets/wandb_badge.svg" alt="W&B Report" style="height:28px; margin-top:0.75rem;"></a>
+</div>
+
 <h3 align="center">Learned Agents: Multi-layout Showcase</h3>
 
 <table>
@@ -32,4 +39,5 @@
     </td>
   </tr>
 </table>
+
 
