@@ -16,6 +16,9 @@
 \usepackage{graphicx}
 \usepackage{pdflscape}
 
+\makeatletter
+\renewcommand{\@noticestring}{} 
+\makeatother
 
 \title{Overcooked}
 
@@ -38,11 +41,11 @@
     Optimization (IPPO) on the Overcooked-AI benchmark, a challenging
     environment for multi-agent coordination. Furthermore, we assess the
     generalization capabilities of the learned policies by training on five
-    distinct layouts and validating performance on two holdout test
-    environments. While the agent pair exhibited emerging generalization
+    training layouts and validating performance on two holdout test
+    environments. While the agent pair exhibits emerging generalization
     behaviors, our findings indicate that the composition of the training
-    distribution is critical for achieving a truly robust and generalizable
-    policy.
+    environment distribution is critical for achieving a truly robust and
+    generalizable policy.
 \end{abstract}
 
 \section{Introduction}
@@ -78,7 +81,7 @@ Proximal Policy Optimization (PPO) is a first-order policy gradient method
 that approximates the trust-region constraint of TRPO without requiring
 second-order optimization. Instead of explicitly constraining the policy
 update, PPO uses a clipped surrogate objective to keep the updated policy
-close to one used to collect the rollouts
+close to the one used to collect the rollouts
 \cite{schulman2017proximalpolicyoptimizationalgorithms}.
 
 \begin{equation}
@@ -102,7 +105,7 @@ and $A_t$ is the estimated advantage at time $t$.
 Due to its simplicity and strong performance in single-agent settings, PPO has
 become a standard choice in many reinforcement learning tasks. 
 
-\subsection{Indipendent PPO}
+\subsection{Independent PPO}
 
 We extend this to \textbf{Independent Proximal Policy Optimization (IPPO)} by
 instantiating a separate PPO learner for each agent. This allows agents to
@@ -142,6 +145,8 @@ were essential and which could be omitted. In this section, we describe the
 specific differences from the standard PPO formulation, explaining the choices
 made to achieve the best possible performance.
 
+The specific implementation details selected for our implementation are listed
+below:
 \begin{itemize}
     \item After collecting rollouts for PPO updates, both returns and advantages
         are computed. The return target for the value function is calculated as
@@ -210,7 +215,7 @@ Since these shaped rewards are generated per agent, we designed a Gymnasium
 wrapper with two distinct modes to handle them:
 \begin{itemize}
     \item \textbf{Shared Mode}: The dense rewards obtained by all agents are
-        summed and distribuited equally. This means both agents get credit
+        summed and distributed equally. This means both agents get credit
         whenever a beneficial action happens, regardless of who did it.
     \item \textbf{Individual Mode}: The dense reward is assigned only to the
         agent that performed the action.
@@ -255,12 +260,6 @@ All hidden layers and convolutions used \textit{orthogonal initialization}
 scale of 0.01 to ensure a uniform initial action distribution at start for
 maximum exploration, while the value head used a scale of 1.0 to immediately
 match the magnitude of expected returns \cite{huang2022ppo}.
-
-We also explored sharing parts of the network between the policy and the value
-function, either by sharing two MLP layers or by using a CNN backbone with
-separate final policy and value heads. While this approach effectively
-improves computational efficiency, since the shared layers are computed fewer
-times,
 
 In addition, we also explored the possibility of sharing some layers between
 the policy and the value function. In particular, we experimented with sharing
@@ -334,7 +333,7 @@ would be incredibly beneficial to maximize computational throughput.
 
 Furthermore, since the primary bottleneck is rollout collection, a
 \textbf{vectorized environment} was utilized to run multiple environments in
-parallel across separate processes using Gymnasium \texttt{AsyncVectorizeEnv}.
+parallel across separate processes using Gymnasium \texttt{AsyncVectorEnv}.
 In this setting, the agent pair interacts simultaneously across $N$
 environments, significantly increasing training throughput. The number of
 environments was set to approximately the number of available CPU cores. It is
@@ -425,7 +424,7 @@ persist in behaviors related to onion-based recipes, failing to adjust to the
 tomato availability.
 
 Single-layout agent pairs show no form of generalization and fail completely
-on new layouts. Even if the multi-layout agent pair has some form of
+on new layouts. Even though the multi-layout agent pair has some form of
 generalization and successfully solves the \textit{Cramped Tomato} layout, it
 still persists with onion-based deliveries. Moreover, it struggles in more
 complex environments with layouts never seen before.
@@ -434,7 +433,7 @@ complex environments with layouts never seen before.
 
 Overall, the results indicate the emergence of non-trivial generalization
 behavior. Training on a distribution of layouts enables agents to learn more
-flexible policies that transfer to unseen environments, as evidenced by
+flexible policies that transfer to unseen environments, as evidenced by the
 performance on \textit{Cramped Tomato}. However, this generalization remains
 limited and degrades rapidly when agents are evaluated on layouts slightly
 more complex than those encountered during training.
