@@ -117,6 +117,48 @@ the concatenation of agents observations, as in MAPPO.
 %% devo fare questo oggi
 \subsection{Reward Shaping}
 
+The reward signal in Overcooked is extremely sparse: the environment assigns a
+reward of 20 only when a soup is successfully delivered. However, a successful
+delivery is a complex interaction requiring a long sequence of coordinated
+actions. Specifically, an agent must collect three ingredients, move to the
+pot, place the ingredients, start cooking, pick up a dish, return to the pot,
+collect the soup, move to the delivery area, and finally deliver it. This must
+be accomplished while avoiding invalid recipes, which result in zero reward.
+
+Because this chain of operations is so long, reinforcement learning algorithms
+struggle to figure out which intermediate steps actually contributed to the
+final success. This significantly slows down learning.
+
+By looking rendered frames and the environment code, we found that Overcooked
+already implements a reward shaping mechanism, returned at each step through
+the \textit{info} dictionary as a dense shaped reward
+(\texttt{ep\_shaped\_r}). The environment assigns fixed positive values for
+specific events such as ingredient placement in the pot (3), dish pickup (3),
+and soup pickup (5).
+
+Although this reward-shaping scheme is relatively simple, it proved to be
+highly effective. The use of a dense shaped reward enabled the learning
+algorithm to quickly develop an understanding of how to prepare soups. We did
+observe that this form of reward shaping can lead to \textit{reward hacking};
+for example, early in training the agents repeatedly picked up and dropped
+dishes to exploit the reward signal. However, these behaviors were transient.
+As training progressed, the agents moved beyond such exploits and converged to
+stable, effective policies that exhibited correct behavior.
+
+Since these shaped rewards are generated per agent, we designed a Gymnasium
+wrapper with two distinct modes to handle them:
+\begin{itemize}
+    \item \textbf{Shared Mode}: The dense rewards obtained by all agents are
+        summed and distribuited equally. This means both agents get credit
+        whenever a beneficial action happens, regardless of who did it.
+    \item \textbf{Individual Mode}: The dense reward is assigned only to the
+        agent that performed the action.
+\end{itemize}
+
+In our experiments, shared mode achieved faster convergence and higher final
+total reward. Consequently, it can be interpreted as a team-based reward that
+promotes coordinated learning.
+
 \subsection{State Representation}
 
 By default, the Overcooked environment returns a \textbf{featurized state}
