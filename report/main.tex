@@ -108,14 +108,13 @@ r_t(\theta) A_t,\;
 \Big]
 \end{equation}
 
-where
+where 
 
 \begin{equation}
 r_t(\theta) =
 \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_t}(a_t \mid s_t)},
-\qquad
-A_t = A^{\pi_{\theta_t}}(s_t,a_t).
 \end{equation}
+and $A_t$ is the estimated advantage at time $t$.
 
 Due to its simplicity and strong performance in single-agent settings, PPO has
 become a standard choice in many reinforcement learning tasks. 
@@ -150,22 +149,50 @@ the concatenation of agents observations, as in MAPPO.
 
 \section{Methodology}
 
-%La mia implementazione di PPO ha aderito sull'articolo
-%The 37 Implementation Details of Proximal Policy Optimization,
-%di cui specialmente i primi 13 e più importanti per l'effettiva
-%implementazione sono stati studiati e considerati. Allo stesso tempo, non
-%tutti i dettagli sono stati implementati
-%
-%si è
-%scelto di non
-
-% spiegare che l'implementazione ha studiato 37 details from PPO..
-% ma con alcune modifiche rispetto ad altri consigli rispetto a ciò detto
-% nell'altro paper
-
 \subsection{Implementation}
 
-%% devo fare questo oggi
+For my PPO implementation, I studied the article \textit{The 37 Implementation
+Details of Proximal Policy Optimization} \cite{huang2022ppo}, paying
+particular attention to the first 13 details. Not all details were strictly
+followed; the literature was consulted to determine which were essential and
+which could be omitted. In this section, I describe the specific differences
+from the PPO presented during lessons, focusing on choices made to achieve the
+best possible performance.
+
+\begin{itemize}
+    \item After collecting rollouts for PPO updates, both returns and advantages
+        are computed. The return target for the value function is calculated as
+        $$
+        returns = A_t + V(s_t),
+        $$
+        which corresponds to a $TD(\lambda)$ estimate rather than summing all
+        future rewards. The advantage estimate is computed using
+        \textbf{Generalized Advantage Estimation (GAE)}, which balances bias
+        and variance and provides a lower-variance signal for policy updates.
+        To further stabilize training, advantages are normalized within each
+        mini-batch.
+
+    \item The value function loss is defined as
+        $$
+        L^V = (V_{\phi}(s_t) - V_{target})^2,
+        $$
+        where $V_{target}$ is the return computed above using
+        $TD(\lambda)$. Clipping the value function, as suggested in some works
+        \cite{huang2022ppo}, was not applied because prior studies
+        \cite{andrychowicz2020mattersonpolicyreinforcementlearning} showed it
+        may degrade performance.
+
+    \item An entropy term was added to the policy loss to encourage
+        exploration by increasing the randomness of the action distribution.
+
+    \item Global gradient clipping is applied, rescaling gradients so that
+        their L2 norm does not exceed 0.5, which helps stabilize training.
+
+    \item Annealing of learning rate was used, as it has been shown to improve
+        performance \cite{andrychowicz2020mattersonpolicyreinforcementlearning}.
+
+\end{itemize}
+
 \subsection{Reward Shaping}
 
 The reward signal in Overcooked is extremely sparse: the environment assigns a
@@ -450,7 +477,7 @@ motivating future work on more diverse training environments, refined reward
 shaping, and other strategies that improve adaptability to novel layouts.
 
 \bibliographystyle{plainnat}
-\bibliography{references.bib}
+\bibliography{references}
 
 \newpage
 \appendix
