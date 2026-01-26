@@ -1,4 +1,4 @@
-<h3 align="center">Layout Showcase</h3>
+<h3 align="center">Learned Agents: Multi-layout Showcase</h3>
 
 <table>
   <tr>
@@ -32,3 +32,4 @@
     </td>
   </tr>
 </table>
+
