@@ -62,11 +62,11 @@
 
 
 \begin{abstract}
-  The abstract paragraph should be indented \nicefrac{1}{2}~inch (3~picas) on
-  both the left- and right-hand margins. Use 10~point type, with a vertical
-  spacing (leading) of 11~points.  The word \textbf{Abstract} must be centered,
-  bold, and in point size 12. Two line spaces precede the abstract. The abstract
-  must be limited to one paragraph.
+    % this work focuses on develop and evaluation of multi agent using IPPO as
+    % the main algorithm, a competitive straightforward variation of PPO 
+    % which still is able to obtain highly effective performance
+    % 
+    lorem ipsum dixit
 \end{abstract}
 
 \section{Introduction}
@@ -74,23 +74,67 @@
 Overcooked-AI\cite{carroll2020utilitylearninghumanshumanai} environment was designed a where the goal is to place three
 onions in a pot, take the resulting soup on a plate and delivering it
 
+% lo sviluppo di agenti che devono cooperare risulta un qualcosa di molto
+% complesso poichè richiede agli agenti di imparare strategie, di cooperare
+% per ottenere dei risultati congiunti
+% spiegare cos'è overcooked
+% che serve come benchmark rispetto allo sviluppo di agenti collaborativi
+
 
 that allows benchmark and evaluate
 reinforcement learning (RL) agents on their ability to cooperate with unknown
 partners in unfamiliarity environments
 % overcooked e minifigura
 
-This work chooses \textbf{Indipendent Proximal Policy Optimization (IPPO)} as
-the learning algorithm for the cooperative multi-agent reinforcement learning
-(MARL) problem. Under indipendent learning, a MARL problem is decomposed into
-$n$ interdependent learning problems, which are solved independently by each
-agent. Each agent treats the other agents as part of the environment and
-learns its own policy and value function based solely on local observations.
 
-While this approach is simple and scalable, it violates the stationarity
-assumption required by Markov Decision Processes (MDPs), since the environment
-dynamics change as other agents update their policies. As a result,
-independent learning may suffer from non-stationarity.
+\section{Background}
+
+\subsection{Proximal Policy Approximation}
+
+Proximal Policy Optimization (PPO) is a first-order policy gradient method
+that approximates the trust-region constraint of TRPO without requiring
+second-order optimization. Instead of explicitly constraining the policy
+update, PPO uses a clipped surrogate objective to keep the updated policy
+close to one used to collect the rollouts
+\cite{schulman2017proximalpolicyoptimizationalgorithms}.
+
+\begin{equation}
+L^{\mathrm{CLIP}}(\theta) =
+\mathbb{E}_t \Big[
+\min\big(
+r_t(\theta) A_t,\;
+\mathrm{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t
+\big)
+\Big]
+\end{equation}
+
+where
+
+\begin{equation}
+r_t(\theta) =
+\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_t}(a_t \mid s_t)},
+\qquad
+A_t = A^{\pi_{\theta_t}}(s_t,a_t).
+\end{equation}
+
+Due to its simplicity and strong performance in single-agent settings, PPO has
+become a standard choice in many reinforcement learning tasks. 
+
+\subsection{Indipendent PPO}
+
+We extend this to \textbf{Independent Proximal Policy Optimization (IPPO)} by
+instantiating a separate PPO learner for each agent. This allows agents to
+optimize their own clipped objectives independently while treating other
+agents as part of the environment, enabling PPO to handle cooperative
+multi-agent reinforcement learning (MARL) tasks like Overcooked.
+
+Under independent learning, a MARL problem is decomposed into $n$
+interdependent learning problems, each solved independently by an agent that
+learns its policy and value function based solely on local observations. While
+this approach is simple and scalable, it violates the stationarity assumption
+inherent to Markov Decision Processes (MDPs), since the environment dynamics
+shift as other agents update their policies. Consequently, independent
+learning can be affected by non-stationarity.
 
 Centralized training methods attempt to address non-stationarity by using
 global information during training, either through joint policy learning or
@@ -104,13 +148,20 @@ issues, making IPPO a simple and effective baseline for cooperative MARL,
 without requiring a centralized critic conditioned on the global state or on
 the concatenation of agents observations, as in MAPPO.
 
-\section{Background}
-
-\subsection{Proximal Policy Approximation}
-
-\subsection{Indipendent PPO}
-
 \section{Methodology}
+
+%La mia implementazione di PPO ha aderito sull'articolo
+%The 37 Implementation Details of Proximal Policy Optimization,
+%di cui specialmente i primi 13 e più importanti per l'effettiva
+%implementazione sono stati studiati e considerati. Allo stesso tempo, non
+%tutti i dettagli sono stati implementati
+%
+%si è
+%scelto di non
+
+% spiegare che l'implementazione ha studiato 37 details from PPO..
+% ma con alcune modifiche rispetto ad altri consigli rispetto a ciò detto
+% nell'altro paper
 
 \subsection{Implementation}
 
@@ -385,18 +436,18 @@ deliveries. We hypothesize that this stems from the fact that four of the five
 training layouts involve onion-based deliveries (see Figure
 \ref{fig:training_layouts}). Such over-representation likely biases the
 policy, trapping agents in suboptimal behaviors, effectively ``overfitting''
-to the training distribution. To achieve stronger generalization, it appears
-crucial to extend training with randomized or procedurally generated layouts
-to ensure a more uniform distribution of ingredients and map structures. Since
-Overcooked-AI supports the integration of new layouts, future work could
-explore whether increased diversity in training environments improves transfer
-performance.
+to the training environment distribution. To achieve stronger generalization,
+it appears crucial to extend training with randomized or procedurally
+generated layouts to ensure a more uniform distribution of ingredients and map
+structures. Since Overcooked-AI supports the integration of new layouts,
+future work could explore whether increased diversity in training environments
+improves transfer performance.
 
 In conclusion, these results show that multi-layout training can improve
 policy generalization, and IPPO proves highly effective even in multi-agent
 settings. Nonetheless, generalization to unseen scenarios remains challenging,
 motivating future work on more diverse training environments, refined reward
-shaping, and other strategies that enhance adaptability to novel layouts.
+shaping, and other strategies that improve adaptability to novel layouts.
 
 \bibliographystyle{plainnat}
 \bibliography{references.bib}
