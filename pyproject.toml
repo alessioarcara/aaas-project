@@ -15,6 +15,7 @@ dependencies = [
     "flax>=0.10.6",
     "gymnasium[other]>=1.2.3",
     "jax[cuda12]>=0.5.3",
+    "jupyter>=1.1.1",
     "loguru>=0.7.3",
     "matplotlib>=3.10.8",
     "optax>=0.2.6",
