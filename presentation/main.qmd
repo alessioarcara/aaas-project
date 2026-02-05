@@ -37,9 +37,9 @@ format:
 * Soup delivery requires an orchestration of intermediate steps
     * **Problem**: it is difficults for agents to understand which intermediate actions contribute to the final delivery
 * **Solution**: Implemented a **gymnasium wrapper** that uses `info` dictionary to do **reward shaping**
-    * Babisits the agents to incentivize actions that increase the probability of delivery
+    * "Babysits" the agents to incentivize actions that increase the probability of delivery
 * Early reward hacking is transient
-    * The agent pair evnetually learns that delivering soups maximizes total reward.
+    * The agent pair eventually learns that delivering soups maximizes total reward.
 
 :::
 
